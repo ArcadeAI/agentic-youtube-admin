@@ -1,24 +1,24 @@
 {
-  "name": "@agentic-youtube-admin/auth",
-  "type": "module",
-  "exports": {
-    ".": {
-      "default": "./src/index.ts"
-    },
-    "./*": {
-      "default": "./src/*.ts"
-    }
-  },
-  "scripts": {},
-  "dependencies": {
-    "@agentic-youtube-admin/db": "workspace:*",
-    "@agentic-youtube-admin/env": "workspace:*",
-    "better-auth": "catalog:",
-    "dotenv": "catalog:",
-    "zod": "catalog:"
-  },
-  "devDependencies": {
-    "@agentic-youtube-admin/config": "workspace:*",
-    "typescript": "^5"
-  }
+	"name": "@agentic-youtube-admin/auth",
+	"type": "module",
+	"exports": {
+		".": {
+			"default": "./src/index.ts"
+		},
+		"./*": {
+			"default": "./src/*.ts"
+		}
+	},
+	"scripts": {},
+	"dependencies": {
+		"@agentic-youtube-admin/db": "workspace:*",
+		"@agentic-youtube-admin/env": "workspace:*",
+		"better-auth": "catalog:",
+		"dotenv": "catalog:",
+		"zod": "catalog:"
+	},
+	"devDependencies": {
+		"@agentic-youtube-admin/config": "workspace:*",
+		"typescript": "^5"
+	}
 }
