@@ -1,0 +1,19 @@
+model NotificationConfig {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name            String
+  channelId       String?
+  notificationType String
+  conditions      Json?
+  deliveryMethod  String
+  deliveryConfig  Json?
+  isActive        Boolean   @default(true)
+  lastTriggeredAt DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([notificationType])
+  @@map("notification_config")
+}

@@ -1,7 +1,12 @@
 import { createPrismaClient } from "@agentic-youtube-admin/db";
 import { env } from "@agentic-youtube-admin/env/server";
+import { passkey } from "@better-auth/passkey";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
+import { magicLink } from "better-auth/plugins";
+import { Resend } from "resend";
+
+const resend = new Resend(env.RESEND_API_KEY);
 
 export function createAuth() {
 	const prisma = createPrismaClient();
@@ -12,9 +17,6 @@ export function createAuth() {
 		}),
 
 		trustedOrigins: [env.CORS_ORIGIN],
-		emailAndPassword: {
-			enabled: true,
-		},
 		secret: env.BETTER_AUTH_SECRET,
 		baseURL: env.BETTER_AUTH_URL,
 		advanced: {
@@ -24,7 +26,23 @@ export function createAuth() {
 				httpOnly: true,
 			},
 		},
-		plugins: [],
+		plugins: [
+			magicLink({
+				sendMagicLink: async ({ email, url }) => {
+					await resend.emails.send({
+						from: env.RESEND_FROM_EMAIL,
+						to: email,
+						subject: "Sign in to YouTube Admin",
+						html: `<p>Click the link below to sign in:</p><p><a href="${url}">Sign in</a></p><p>This link expires in 5 minutes.</p>`,
+					});
+				},
+			}),
+			passkey({
+				rpID: env.PASSKEY_RP_ID,
+				rpName: "YouTube Admin",
+				origin: env.BETTER_AUTH_URL,
+			}),
+		],
 	});
 }
 

@@ -1,0 +1,21 @@
+{
+	"name": "@agentic-youtube-admin/arcade",
+	"type": "module",
+	"exports": {
+		".": {
+			"default": "./src/index.ts"
+		},
+		"./*": {
+			"default": "./src/*.ts"
+		}
+	},
+	"dependencies": {
+		"@agentic-youtube-admin/db": "workspace:*",
+		"@arcadeai/arcadejs": "^2.3.0",
+		"zod": "catalog:"
+	},
+	"devDependencies": {
+		"@agentic-youtube-admin/config": "workspace:*",
+		"typescript": "^5"
+	}
+}

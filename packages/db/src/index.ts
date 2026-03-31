@@ -1,7 +1,10 @@
 import { env } from "@agentic-youtube-admin/env/server";
 import { PrismaPg } from "@prisma/adapter-pg";
 
-import { PrismaClient } from "../prisma/generated/client";
+import { Prisma, PrismaClient } from "../prisma/generated/client";
+
+export type { PrismaClient };
+export { Prisma };
 
 export function createPrismaClient() {
 	const adapter = new PrismaPg({

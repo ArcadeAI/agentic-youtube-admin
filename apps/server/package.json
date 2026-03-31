@@ -13,13 +13,17 @@
 		"start": "bun run dist/index.mjs"
 	},
 	"dependencies": {
+		"@agentic-youtube-admin/arcade": "workspace:*",
 		"@agentic-youtube-admin/auth": "workspace:*",
 		"@agentic-youtube-admin/db": "workspace:*",
 		"@agentic-youtube-admin/env": "workspace:*",
 		"@elysiajs/cors": "^1.4.1",
+		"@mastra/core": "^1.18.0",
 		"better-auth": "catalog:",
+		"croner": "^9.0.0",
 		"dotenv": "catalog:",
 		"elysia": "^1.4.21",
+		"resend": "^6.10.0",
 		"zod": "catalog:"
 	},
 	"devDependencies": {

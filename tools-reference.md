@@ -918,6 +918,36 @@ Videos not found (private, deleted) are omitted from the response. The caller sh
 
 **Note**: Intentionally fetches `part=statistics` only to minimize quota usage. If metadata is also needed (title changes, etc.), use `list_public_channel_videos` or `discover_all_public_videos` instead.
 
+### `get_public_video_transcription` *(NOT YET IMPLEMENTED)*
+
+Fetch the available transcription or transcribe the video
+
+**Auth**: API key via Arcade secret — `requires_secrets=["YOUTUBE_API_KEY"]` (no OAuth scopes)
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| video_ids | list[str] | yes | Up to 10 video IDs |
+
+**Returns**: `dict[str, dict]`
+
+```json
+{
+  "sHo_SruY6Dk": {
+    "videoId": "sHo_SruY6Dk",
+    "transcription": "..."
+  },
+  "ntH-62rwuzs": {
+    "videoId": "ntH-62rwuzs",
+    "transcription": "..."
+  }
+}
+```
+
+Videos that don't have a transcription will be downloaded and passed to OpenAI's speech-to-text model and saved to a file
+
+**Note**: This tool will be used for owned videos as well.
+
+**Note**: Intentionally fetches `part=statistics` only to minimize quota usage. If metadata is also needed (title changes, etc.), use `list_public_channel_videos` or `discover_all_public_videos` instead.
 ---
 ---
 

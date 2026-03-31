@@ -1,146 +1,120 @@
 import { Button } from "@agentic-youtube-admin/ui/components/button";
 import { Input } from "@agentic-youtube-admin/ui/components/input";
 import { Label } from "@agentic-youtube-admin/ui/components/label";
-import { useForm } from "@tanstack/react-form";
-import { useNavigate } from "@tanstack/react-router";
+import { useState } from "react";
 import { toast } from "sonner";
-import z from "zod";
 
 import { authClient } from "@/lib/auth-client";
 
 import Loader from "./loader";
 
-export default function SignInForm({
-	onSwitchToSignUp,
-}: {
-	onSwitchToSignUp: () => void;
-}) {
-	const navigate = useNavigate({
-		from: "/",
-	});
+export default function SignInForm() {
 	const { isPending } = authClient.useSession();
-
-	const form = useForm({
-		defaultValues: {
-			email: "",
-			password: "",
-		},
-		onSubmit: async ({ value }) => {
-			await authClient.signIn.email(
-				{
-					email: value.email,
-					password: value.password,
-				},
-				{
-					onSuccess: () => {
-						navigate({
-							to: "/dashboard",
-						});
-						toast.success("Sign in successful");
-					},
-					onError: (error) => {
-						toast.error(error.error.message || error.error.statusText);
-					},
-				},
-			);
-		},
-		validators: {
-			onSubmit: z.object({
-				email: z.email("Invalid email address"),
-				password: z.string().min(8, "Password must be at least 8 characters"),
-			}),
-		},
-	});
+	const [email, setEmail] = useState("");
+	const [magicLinkSent, setMagicLinkSent] = useState(false);
+	const [isSubmitting, setIsSubmitting] = useState(false);
 
 	if (isPending) {
 		return <Loader />;
 	}
 
-	return (
-		<div className="mx-auto mt-10 w-full max-w-md p-6">
-			<h1 className="mb-6 text-center font-bold text-3xl">Welcome Back</h1>
+	const handleMagicLink = async (e: React.FormEvent) => {
+		e.preventDefault();
+		if (!email) {
+			toast.error("Please enter your email");
+			return;
+		}
 
-			<form
-				onSubmit={(e) => {
-					e.preventDefault();
-					e.stopPropagation();
-					form.handleSubmit();
-				}}
-				className="space-y-4"
-			>
-				<div>
-					<form.Field name="email">
-						{(field) => (
-							<div className="space-y-2">
-								<Label htmlFor={field.name}>Email</Label>
-								<Input
-									id={field.name}
-									name={field.name}
-									type="email"
-									value={field.state.value}
-									onBlur={field.handleBlur}
-									onChange={(e) => field.handleChange(e.target.value)}
-								/>
-								{field.state.meta.errors.map((error) => (
-									<p key={error?.message} className="text-red-500">
-										{error?.message}
-									</p>
-								))}
-							</div>
-						)}
-					</form.Field>
-				</div>
+		setIsSubmitting(true);
+		try {
+			await authClient.signIn.magicLink({
+				email,
+				callbackURL: "/dashboard",
+			});
+			setMagicLinkSent(true);
+			toast.success("Magic link sent! Check your email.");
+		} catch (err) {
+			toast.error(
+				err instanceof Error ? err.message : "Failed to send magic link",
+			);
+		} finally {
+			setIsSubmitting(false);
+		}
+	};
 
-				<div>
-					<form.Field name="password">
-						{(field) => (
-							<div className="space-y-2">
-								<Label htmlFor={field.name}>Password</Label>
-								<Input
-									id={field.name}
-									name={field.name}
-									type="password"
-									value={field.state.value}
-									onBlur={field.handleBlur}
-									onChange={(e) => field.handleChange(e.target.value)}
-								/>
-								{field.state.meta.errors.map((error) => (
-									<p key={error?.message} className="text-red-500">
-										{error?.message}
-									</p>
-								))}
-							</div>
-						)}
-					</form.Field>
-				</div>
+	const handlePasskey = async () => {
+		setIsSubmitting(true);
+		try {
+			await authClient.signIn.passkey();
+			toast.success("Signed in with passkey");
+		} catch (err) {
+			toast.error(
+				err instanceof Error ? err.message : "Passkey sign-in failed",
+			);
+		} finally {
+			setIsSubmitting(false);
+		}
+	};
 
-				<form.Subscribe
-					selector={(state) => ({
-						canSubmit: state.canSubmit,
-						isSubmitting: state.isSubmitting,
-					})}
-				>
-					{({ canSubmit, isSubmitting }) => (
-						<Button
-							type="submit"
-							className="w-full"
-							disabled={!canSubmit || isSubmitting}
-						>
-							{isSubmitting ? "Submitting..." : "Sign In"}
-						</Button>
-					)}
-				</form.Subscribe>
-			</form>
-
-			<div className="mt-4 text-center">
+	if (magicLinkSent) {
+		return (
+			<div className="mx-auto mt-10 w-full max-w-md p-6 text-center">
+				<h1 className="mb-4 font-bold text-3xl">Check your email</h1>
+				<p className="mb-6 text-muted-foreground">
+					We sent a sign-in link to <strong>{email}</strong>
+				</p>
 				<Button
 					variant="link"
-					onClick={onSwitchToSignUp}
+					onClick={() => setMagicLinkSent(false)}
 					className="text-indigo-600 hover:text-indigo-800"
 				>
-					Need an account? Sign Up
+					Use a different email
 				</Button>
 			</div>
+		);
+	}
+
+	return (
+		<div className="mx-auto mt-10 w-full max-w-md p-6">
+			<h1 className="mb-6 text-center font-bold text-3xl">Sign In</h1>
+
+			<form onSubmit={handleMagicLink} className="space-y-4">
+				<div className="space-y-2">
+					<Label htmlFor="email">Email</Label>
+					<Input
+						id="email"
+						name="email"
+						type="email"
+						placeholder="you@example.com"
+						value={email}
+						onChange={(e) => setEmail(e.target.value)}
+						autoComplete="email webauthn"
+					/>
+				</div>
+
+				<Button
+					type="submit"
+					className="w-full"
+					disabled={isSubmitting || !email}
+				>
+					{isSubmitting ? "Sending..." : "Send magic link"}
+				</Button>
+			</form>
+
+			<div className="my-6 flex items-center gap-4">
+				<div className="h-px flex-1 bg-border" />
+				<span className="text-muted-foreground text-sm">or</span>
+				<div className="h-px flex-1 bg-border" />
+			</div>
+
+			<Button
+				variant="outline"
+				className="w-full"
+				onClick={handlePasskey}
+				disabled={isSubmitting}
+			>
+				Sign in with passkey
+			</Button>
 		</div>
 	);
 }

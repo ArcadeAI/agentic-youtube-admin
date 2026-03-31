@@ -1,0 +1,111 @@
+model TrackedChannel {
+  id               String    @id @default(cuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channelId        String
+  channelTitle     String
+  channelThumbnail String?
+  customUrl        String?
+  description      String?   @db.Text
+  country          String?
+  isActive         Boolean   @default(true)
+  lastPolledAt     DateTime?
+  lastPollError    String?   @db.Text
+  notes            String?   @db.Text
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  videos           TrackedVideo[]
+  snapshots        TrackedChannelSnapshot[]
+  engagementScores ChannelEngagementScore[]
+
+  @@unique([userId, channelId])
+  @@index([userId])
+  @@index([channelId])
+  @@map("tracked_channel")
+}
+
+model TrackedChannelSnapshot {
+  id                    String    @id @default(cuid())
+  channelId             String
+  channel               TrackedChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  date                  DateTime  @db.Date
+  subscriberCount       Int?
+  totalViews            BigInt
+  videoCount            Int
+  subscriberCountHidden Boolean   @default(false)
+  createdAt             DateTime  @default(now())
+
+  @@unique([channelId, date])
+  @@index([channelId, date])
+  @@index([date])
+  @@map("tracked_channel_snapshot")
+}
+
+model TrackedVideo {
+  id                    String    @id @default(cuid())
+  channelId             String
+  channel               TrackedChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  videoId               String    @unique
+  title                 String
+  description           String?   @db.Text
+  thumbnailUrl          String?
+  publishedAt           DateTime
+  duration              Int?
+  tags                  String[]
+  categoryId            String?
+  liveBroadcastContent  String?
+  contentType           String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  snapshots             TrackedVideoSnapshot[]
+  sponsorships          SponsoredVideo[]
+
+  @@index([channelId])
+  @@index([publishedAt])
+  @@index([contentType])
+  @@map("tracked_video")
+}
+
+model TrackedVideoSnapshot {
+  id            String    @id @default(cuid())
+  videoId       String
+  video         TrackedVideo @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  date          DateTime  @db.Date
+  viewCount     BigInt    @default(0)
+  likeCount     Int       @default(0)
+  commentCount  Int       @default(0)
+  viewsDelta    BigInt?
+  likesDelta    Int?
+  commentsDelta Int?
+  createdAt     DateTime  @default(now())
+
+  @@unique([videoId, date])
+  @@index([videoId, date])
+  @@index([date])
+  @@map("tracked_video_snapshot")
+}
+
+model ChannelEngagementScore {
+  id              String    @id @default(cuid())
+  channelId       String
+  channel         TrackedChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  date            DateTime  @db.Date
+  periodType      String
+  periodStart     DateTime  @db.Date
+  periodEnd       DateTime  @db.Date
+  score           Float
+  scoreNormalized Float?
+  formulaVersion  String
+  formulaName     String?
+  inputData       Json?
+  metadata        Json?
+  createdAt       DateTime  @default(now())
+
+  @@unique([channelId, date, periodType, formulaVersion])
+  @@index([channelId, date])
+  @@index([channelId, periodType])
+  @@index([formulaVersion])
+  @@map("channel_engagement_score")
+}

@@ -1,0 +1,39 @@
+model ScanSchedule {
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scanType       String
+  channelId      String?
+  cronExpression String
+  isActive       Boolean   @default(true)
+  lastRunAt      DateTime?
+  lastRunStatus  String?
+  lastRunError   String?   @db.Text
+  config         Json?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  scanRuns       ScanRun[]
+
+  @@index([userId])
+  @@index([scanType])
+  @@map("scan_schedule")
+}
+
+model ScanRun {
+  id          String    @id @default(cuid())
+  scheduleId  String
+  schedule    ScanSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  scanType    String
+  status      String
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+  result      Json?
+  error       String?   @db.Text
+  metadata    Json?
+  createdAt   DateTime  @default(now())
+
+  @@index([scheduleId])
+  @@index([status])
+  @@map("scan_run")
+}

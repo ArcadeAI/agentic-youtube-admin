@@ -9,6 +9,12 @@ model User {
   sessions      Session[]
   accounts      Account[]
 
+  youtubeChannels     YouTubeChannel[]
+  trackedChannels     TrackedChannel[]
+  brands              Brand[]
+  scanSchedules       ScanSchedule[]
+  notificationConfigs NotificationConfig[]
+
   @@unique([email])
   @@map("user")
 }

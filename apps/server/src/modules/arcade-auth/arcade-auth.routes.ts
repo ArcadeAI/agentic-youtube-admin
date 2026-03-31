@@ -1,0 +1,56 @@
+import { getArcadeClient } from "@agentic-youtube-admin/arcade";
+import { auth } from "@agentic-youtube-admin/auth";
+import { env } from "@agentic-youtube-admin/env/server";
+import { Elysia, t } from "elysia";
+
+export const arcadeAuthRoutes = new Elysia({ prefix: "/api/arcade" }).get(
+	"/verify",
+	async ({ query, request }) => {
+		const flowId = query.flow_id;
+		if (!flowId) {
+			return new Response("Missing flow_id", { status: 400 });
+		}
+
+		// Get current user from Better Auth session cookie
+		const session = await auth.api.getSession({
+			headers: request.headers,
+		});
+
+		if (!session?.user) {
+			// User not logged in — redirect to login with return URL
+			const returnUrl = encodeURIComponent(
+				`${env.BETTER_AUTH_URL}/api/arcade/verify?flow_id=${flowId}`,
+			);
+			return Response.redirect(
+				`${env.CORS_ORIGIN}/login?return_to=${returnUrl}`,
+				302,
+			);
+		}
+
+		// Confirm user identity with Arcade
+		const arcade = getArcadeClient();
+		try {
+			await arcade.auth.confirmUser({
+				flow_id: flowId,
+				user_id: session.user.email,
+			});
+		} catch (err) {
+			console.error("Arcade user verification failed:", err);
+			return Response.redirect(
+				`${env.CORS_ORIGIN}/dashboard?youtube=error`,
+				302,
+			);
+		}
+
+		// Success — redirect to dashboard
+		return Response.redirect(
+			`${env.CORS_ORIGIN}/dashboard?youtube=connected`,
+			302,
+		);
+	},
+	{
+		query: t.Object({
+			flow_id: t.Optional(t.String()),
+		}),
+	},
+);

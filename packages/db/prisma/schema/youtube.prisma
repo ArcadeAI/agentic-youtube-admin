@@ -1,0 +1,201 @@
+model YouTubeChannel {
+  id               String    @id @default(cuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channelId        String    @unique
+  channelTitle     String
+  channelThumbnail String?
+  customUrl        String?
+  lastSyncAt       DateTime?
+  lastSyncStatus   String?
+  lastSyncError    String?   @db.Text
+  backfillCompleted   Boolean  @default(false)
+  backfillStartDate   DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  videos           Video[]
+  dailyStats       ChannelDailyStats[]
+
+  @@index([userId])
+  @@map("youtube_channel")
+}
+
+model Video {
+  id                    String    @id @default(cuid())
+  channelId             String
+  channel               YouTubeChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  videoId               String    @unique
+  title                 String
+  description           String?   @db.Text
+  thumbnailUrl          String?
+  publishedAt           DateTime
+  duration              Int?
+  tags                  String[]
+  categoryId            String?
+  liveBroadcastContent  String?
+  contentType           String?
+  width                 Int?
+  height                Int?
+  aspectRatio           Float?
+  currentViews          BigInt    @default(0)
+  currentLikes          Int       @default(0)
+  currentComments       Int       @default(0)
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  dailyStats            VideoDailyStats[]
+  trafficSourceStats    VideoTrafficSourceStats[]
+  deviceStats           VideoDeviceStats[]
+  geographyStats        VideoGeographyStats[]
+  retention             VideoRetention[]
+  liveStreamTimeline    LiveStreamTimeline[]
+
+  @@index([channelId])
+  @@index([publishedAt])
+  @@index([contentType])
+  @@map("video")
+}
+
+model VideoDailyStats {
+  id                          String    @id @default(cuid())
+  videoId                     String
+  video                       Video     @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  date                        DateTime  @db.Date
+  views                       BigInt    @default(0)
+  estimatedMinutesWatched     BigInt?
+  averageViewDuration         Int?
+  averageViewPercentage       Float?
+  likes                       Int?
+  comments                    Int?
+  shares                      Int?
+  videosAddedToPlaylists      Int?
+  videosRemovedFromPlaylists  Int?
+  subscribersGained           Int?
+  subscribersLost             Int?
+  engagedViews                BigInt?
+  redViews                    BigInt?
+  estimatedRedMinutesWatched  BigInt?
+  cardImpressions             BigInt?
+  cardClicks                  BigInt?
+  cardClickRate               Float?
+  cardTeaserImpressions       BigInt?
+  cardTeaserClicks            BigInt?
+  cardTeaserClickRate         Float?
+  averageConcurrentViewers    Int?
+  peakConcurrentViewers       Int?
+  metadata                    Json?
+  createdAt                   DateTime  @default(now())
+  updatedAt                   DateTime  @updatedAt
+
+  @@unique([videoId, date])
+  @@index([videoId, date])
+  @@index([date])
+  @@map("video_daily_stats")
+}
+
+model VideoTrafficSourceStats {
+  id                      String    @id @default(cuid())
+  videoId                 String
+  video                   Video     @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  date                    DateTime  @db.Date
+  trafficSourceType       String
+  trafficSourceDetail     String    @default("")
+  views                   BigInt    @default(0)
+  estimatedMinutesWatched BigInt?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  @@unique([videoId, date, trafficSourceType, trafficSourceDetail])
+  @@index([videoId, date])
+  @@index([trafficSourceType])
+  @@map("video_traffic_source_stats")
+}
+
+model VideoDeviceStats {
+  id                      String    @id @default(cuid())
+  videoId                 String
+  video                   Video     @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  date                    DateTime  @db.Date
+  deviceType              String
+  operatingSystem         String    @default("")
+  views                   BigInt    @default(0)
+  estimatedMinutesWatched BigInt?
+  averageViewDuration     Int?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  @@unique([videoId, date, deviceType, operatingSystem])
+  @@index([videoId, date])
+  @@index([deviceType])
+  @@map("video_device_stats")
+}
+
+model VideoGeographyStats {
+  id                      String    @id @default(cuid())
+  videoId                 String
+  video                   Video     @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  date                    DateTime  @db.Date
+  country                 String
+  views                   BigInt    @default(0)
+  estimatedMinutesWatched BigInt?
+  subscribersGained       Int?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  @@unique([videoId, date, country])
+  @@index([videoId, date])
+  @@index([country])
+  @@map("video_geography_stats")
+}
+
+model VideoRetention {
+  id                           String    @id @default(cuid())
+  videoId                      String
+  video                        Video     @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  elapsedRatio                 Float
+  audienceWatchRatio           Float
+  relativeRetentionPerformance Float?
+  calculatedAt                 DateTime
+
+  @@unique([videoId, elapsedRatio])
+  @@index([videoId])
+  @@map("video_retention")
+}
+
+model LiveStreamTimeline {
+  id                       String    @id @default(cuid())
+  videoId                  String
+  video                    Video     @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  livestreamPosition       Int
+  averageConcurrentViewers Int?
+  peakConcurrentViewers    Int?
+  createdAt                DateTime  @default(now())
+
+  @@unique([videoId, livestreamPosition])
+  @@index([videoId])
+  @@map("live_stream_timeline")
+}
+
+model ChannelDailyStats {
+  id                      String    @id @default(cuid())
+  channelId               String
+  channel                 YouTubeChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  date                    DateTime  @db.Date
+  subscriberCount         Int?
+  totalViews              BigInt
+  totalVideos             Int
+  subscribersGained       Int?
+  subscribersLost         Int?
+  viewsGained             BigInt?
+  estimatedMinutesWatched BigInt?
+  averageViewDuration     Int?
+  metadata                Json?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  @@unique([channelId, date])
+  @@index([channelId, date])
+  @@index([date])
+  @@map("channel_daily_stats")
+}

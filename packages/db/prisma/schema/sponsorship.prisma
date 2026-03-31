@@ -1,0 +1,43 @@
+model Brand {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  logoUrl   String?
+  website   String?
+  notes     String?   @db.Text
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  sponsoredVideos SponsoredVideo[]
+
+  @@unique([userId, name])
+  @@index([userId])
+  @@map("brand")
+}
+
+model SponsoredVideo {
+  id                String    @id @default(cuid())
+  videoId           String
+  video             TrackedVideo @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  brandId           String
+  brand             Brand     @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  campaignName      String    @default("")
+  paymentAmount     Float?
+  paymentCurrency   String    @default("USD")
+  sponsorshipType   String?
+  contractedAt      DateTime?
+  expectedReleaseAt DateTime?
+  actualReleaseAt   DateTime?
+  deliverables      String?   @db.Text
+  notes             String?   @db.Text
+  metadata          Json?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([videoId, brandId, campaignName])
+  @@index([videoId])
+  @@index([brandId])
+  @@index([campaignName])
+  @@map("sponsored_video")
+}
