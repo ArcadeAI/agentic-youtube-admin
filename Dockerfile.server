@@ -28,4 +28,4 @@ COPY . .
 RUN bun run build
 
 EXPOSE 3000
-CMD ["bun", "run", "apps/server/dist/index.mjs"]
+CMD ["./start.sh"]
