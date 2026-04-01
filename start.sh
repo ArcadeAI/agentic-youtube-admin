@@ -2,7 +2,9 @@
 set -e
 
 echo "Applying database migrations..."
-bunx prisma migrate deploy --schema packages/db/prisma/schema
+cd /app/packages/db
+bun run db:deploy
+cd /app
 echo "Migrations applied."
 
 echo "Starting server..."
