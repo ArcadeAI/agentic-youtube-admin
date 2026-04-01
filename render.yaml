@@ -32,7 +32,7 @@ services:
       - key: PASSKEY_RP_ID
         sync: false
       - key: RESEND_FROM_EMAIL
-        value: "noreply@yourdomain.com"
+        sync: false
 
   # Web Frontend (Static Site)
   - type: web
