@@ -3,9 +3,9 @@ set -e
 
 echo "Applying database migrations..."
 cd /app/packages/db
-bun run db:deploy
+node node_modules/.bin/prisma migrate deploy
 cd /app
 echo "Migrations applied."
 
 echo "Starting server..."
-exec bun run apps/server/dist/index.mjs
+exec bun apps/server/dist/index.mjs
