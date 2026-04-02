@@ -265,7 +265,7 @@ export class TrackingService {
 			TOOL_NAMES.SCORE_CHANNEL,
 			arcadeUserId,
 			{
-				channel_id: channelIdOrHandle,
+				channel_id_or_handle: channelIdOrHandle,
 				num_videos: numVideos,
 				...(date ? { date } : {}),
 			},

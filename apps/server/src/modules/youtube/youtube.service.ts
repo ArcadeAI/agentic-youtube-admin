@@ -72,10 +72,15 @@ export class YouTubeService {
 		arcadeUserId: string,
 		channelDbId: string,
 	) {
+		const channel = await this.prisma.youTubeChannel.findUniqueOrThrow({
+			where: { id: channelDbId },
+			select: { channelId: true },
+		});
+
 		const result = await callTool(
 			TOOL_NAMES.DISCOVER_ALL_VIDEOS,
 			arcadeUserId,
-			{},
+			{ channel_id: channel.channelId },
 			discoverAllVideosResponseSchema,
 		);
 		if (!result.ok) {
