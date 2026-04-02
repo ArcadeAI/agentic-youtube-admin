@@ -29,7 +29,7 @@ export default function SignInForm() {
 		try {
 			await authClient.signIn.magicLink({
 				email,
-				callbackURL: "/dashboard",
+				callbackURL: `${window.location.origin}/dashboard`,
 			});
 			setMagicLinkSent(true);
 			toast.success("Magic link sent! Check your email.");
