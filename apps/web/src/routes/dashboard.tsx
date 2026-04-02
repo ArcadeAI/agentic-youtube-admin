@@ -8,7 +8,7 @@ import {
 	CardTitle,
 } from "@agentic-youtube-admin/ui/components/card";
 import { Skeleton } from "@agentic-youtube-admin/ui/components/skeleton";
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -192,23 +192,29 @@ function DashboardPage() {
 				<div className="space-y-4">
 					{channels.map((channel) => (
 						<Card key={channel.id}>
-							<CardHeader>
-								<div className="flex items-center gap-3">
-									{channel.channelThumbnail && (
-										<img
-											src={channel.channelThumbnail}
-											alt={channel.channelTitle}
-											className="size-10 rounded-full"
-										/>
-									)}
-									<div>
-										<CardTitle>{channel.channelTitle}</CardTitle>
-										{channel.customUrl && (
-											<CardDescription>{channel.customUrl}</CardDescription>
+							<Link
+								to="/channels/$channelId"
+								params={{ channelId: channel.id }}
+								className="block"
+							>
+								<CardHeader>
+									<div className="flex items-center gap-3">
+										{channel.channelThumbnail && (
+											<img
+												src={channel.channelThumbnail}
+												alt={channel.channelTitle}
+												className="size-10 rounded-full"
+											/>
 										)}
+										<div>
+											<CardTitle>{channel.channelTitle}</CardTitle>
+											{channel.customUrl && (
+												<CardDescription>{channel.customUrl}</CardDescription>
+											)}
+										</div>
 									</div>
-								</div>
-							</CardHeader>
+								</CardHeader>
+							</Link>
 							<CardContent>
 								<div className="flex gap-4 text-muted-foreground text-xs">
 									<span>
