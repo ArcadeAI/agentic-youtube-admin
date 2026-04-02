@@ -55,7 +55,15 @@ function SettingsPage() {
 	const fetchClients = useCallback(async () => {
 		try {
 			const { data } = await authClient.oauth2.getClients();
-			setClients((data as unknown as OAuthClient[]) ?? []);
+			const raw = (data ?? []) as unknown as Record<string, unknown>[];
+			setClients(
+				raw.map((c) => ({
+					clientId: (c.clientId ?? c.client_id ?? "") as string,
+					name: (c.name ?? c.client_name ?? null) as string | null,
+					redirectUris: (c.redirectUris ?? c.redirect_uris ?? []) as string[],
+					createdAt: (c.createdAt ?? c.created_at ?? null) as string | null,
+				})),
+			);
 		} catch {
 			toast.error("Failed to load OAuth clients");
 		} finally {
@@ -236,7 +244,7 @@ function SettingsPage() {
 							<CardContent>
 								<div className="text-muted-foreground text-xs">
 									<span>Redirect URIs: </span>
-									{client.redirectUris.join(", ") || "none"}
+									{(client.redirectUris ?? []).join(", ") || "none"}
 								</div>
 							</CardContent>
 							<CardFooter>
