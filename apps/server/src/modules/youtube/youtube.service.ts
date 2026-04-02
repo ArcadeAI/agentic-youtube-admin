@@ -36,7 +36,18 @@ export class YouTubeService {
 
 	async connectChannel(userId: string, arcadeUserId: string) {
 		const channelInfo = await this.getMyChannel(arcadeUserId);
+		return this.saveChannel(userId, channelInfo);
+	}
 
+	async saveChannel(
+		userId: string,
+		channelInfo: {
+			channelId: string;
+			title: string;
+			thumbnail?: string | null;
+			customUrl?: string | null;
+		},
+	) {
 		const channel = await this.prisma.youTubeChannel.upsert({
 			where: { channelId: channelInfo.channelId },
 			create: {

@@ -1,4 +1,10 @@
-import { startAuthFlow } from "@agentic-youtube-admin/arcade";
+import {
+	callTool,
+	checkToolAuth,
+	TOOL_NAMES,
+	waitAndExecuteTool,
+} from "@agentic-youtube-admin/arcade";
+import { getMyChannelResponseSchema } from "@agentic-youtube-admin/arcade/schemas/channel-analytics";
 import { auth } from "@agentic-youtube-admin/auth";
 import { Elysia, t } from "elysia";
 import type { YouTubeService } from "./youtube.service";
@@ -17,7 +23,6 @@ export function createYouTubeRoutes(service: YouTubeService) {
 			},
 		)
 		.post("/channels/connect", async ({ request }) => {
-			// Get current user from session
 			const session = await auth.api.getSession({
 				headers: request.headers,
 			});
@@ -25,14 +30,74 @@ export function createYouTubeRoutes(service: YouTubeService) {
 				return new Response("Unauthorized", { status: 401 });
 			}
 
-			// Start Arcade OAuth flow using the user's email as Arcade user ID
-			const authUrl = await startAuthFlow(session.user.email);
-			return { authUrl };
+			const arcadeUserId = session.user.email;
+
+			// Check if the user needs to authorize the tool
+			const authCheck = await checkToolAuth(
+				TOOL_NAMES.GET_MY_CHANNEL,
+				arcadeUserId,
+			);
+
+			if (authCheck.needsAuth) {
+				return {
+					needsAuth: true,
+					authUrl: authCheck.authUrl,
+					authId: authCheck.authId,
+				};
+			}
+
+			// Already authorized — execute directly
+			const result = await callTool(
+				TOOL_NAMES.GET_MY_CHANNEL,
+				arcadeUserId,
+				{},
+				getMyChannelResponseSchema,
+			);
+
+			if (!result.ok) {
+				throw result.error;
+			}
+
+			const channel = await service.saveChannel(session.user.id, result.data);
+			return { connected: true, channel };
 		})
+		.post(
+			"/channels/completeConnection",
+			async ({ request, body }) => {
+				const session = await auth.api.getSession({
+					headers: request.headers,
+				});
+				if (!session?.user) {
+					return new Response("Unauthorized", { status: 401 });
+				}
+
+				const arcadeUserId = session.user.email;
+
+				// Wait for pending auth to complete, then execute
+				const result = await waitAndExecuteTool(
+					body.authId,
+					TOOL_NAMES.GET_MY_CHANNEL,
+					arcadeUserId,
+					{},
+					getMyChannelResponseSchema,
+				);
+
+				if (!result.ok) {
+					throw result.error;
+				}
+
+				const channel = await service.saveChannel(session.user.id, result.data);
+				return { connected: true, channel };
+			},
+			{
+				body: t.Object({
+					authId: t.String(),
+				}),
+			},
+		)
 		.post(
 			"/channels/sync",
 			async ({ body }) => {
-				// Called after OAuth is complete to sync channel data
 				return service.connectChannel(body.userId, body.arcadeUserId);
 			},
 			{

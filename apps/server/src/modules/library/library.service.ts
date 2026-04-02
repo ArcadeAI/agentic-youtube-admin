@@ -1,6 +1,5 @@
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { PrismaClient } from "@agentic-youtube-admin/db";
 
 const TRANSCRIPTIONS_DIR = join(process.cwd(), "transcriptions");
 
@@ -13,8 +12,6 @@ function slugify(text: string): string {
 }
 
 export class LibraryService {
-	constructor(_prisma: PrismaClient) {}
-
 	async writeTranscription(
 		channelId: string,
 		videoId: string,

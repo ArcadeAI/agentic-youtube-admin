@@ -1,6 +1,6 @@
 databases:
   - name: youtube-admin-db
-    plan: free
+    plan: basic-256mb
     databaseName: youtube_admin
 
 services:
@@ -9,7 +9,7 @@ services:
     name: youtube-admin-server
     runtime: docker
     dockerfilePath: ./Dockerfile.server
-    plan: free
+    plan: starter
     envVars:
       - key: DATABASE_URL
         fromDatabase:

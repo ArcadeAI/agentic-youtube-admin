@@ -16,6 +16,8 @@ import { z } from "zod";
 import { api } from "@/lib/api";
 import { authClient } from "@/lib/auth-client";
 
+const PENDING_AUTH_KEY = "yt_pending_auth_id";
+
 const searchSchema = z.object({
 	youtube: z.enum(["connected", "error"]).optional(),
 });
@@ -48,8 +50,8 @@ interface Channel {
 function DashboardPage() {
 	const { session } = Route.useRouteContext();
 	const { youtube } = Route.useSearch();
-	const userId = session.data!.user.id;
-	const userEmail = session.data!.user.email;
+	const userId = session.data?.user.id ?? "";
+	const userEmail = session.data?.user.email ?? "";
 
 	const [channels, setChannels] = useState<Channel[]>([]);
 	const [loading, setLoading] = useState(true);
@@ -69,10 +71,39 @@ function DashboardPage() {
 		}
 	}, [userId]);
 
+	// After OAuth redirect, complete the connection using the stored authId
 	useEffect(() => {
-		if (youtube === "connected") {
-			toast.success("YouTube account connected successfully");
-		} else if (youtube === "error") {
+		if (youtube !== "connected") return;
+
+		const authId = sessionStorage.getItem(PENDING_AUTH_KEY);
+		if (!authId) {
+			// No pending auth — just refresh channels (might have been synced already)
+			toast.success("YouTube account connected");
+			fetchChannels();
+			return;
+		}
+
+		sessionStorage.removeItem(PENDING_AUTH_KEY);
+		setConnecting(true);
+
+		(async () => {
+			try {
+				await api.api.youtube.channels.completeConnection.post({
+					authId,
+				});
+				toast.success("YouTube channel connected and synced");
+				await fetchChannels();
+			} catch {
+				toast.error("Connected but failed to sync channel data");
+				await fetchChannels();
+			} finally {
+				setConnecting(false);
+			}
+		})();
+	}, [youtube, fetchChannels]);
+
+	useEffect(() => {
+		if (youtube === "error") {
 			toast.error("Failed to connect YouTube account");
 		}
 	}, [youtube]);
@@ -85,12 +116,26 @@ function DashboardPage() {
 		setConnecting(true);
 		try {
 			const { data } = await api.api.youtube.channels.connect.post();
-			const result = data as { authUrl?: string } | undefined;
+			const result = data as
+				| { authUrl?: string; authId?: string; connected?: boolean }
+				| undefined;
+
 			if (result?.authUrl) {
+				// Store authId so we can complete the connection after redirect
+				if (result.authId) {
+					sessionStorage.setItem(PENDING_AUTH_KEY, result.authId);
+				}
 				window.location.href = result.authUrl;
+				return;
+			}
+
+			if (result?.connected) {
+				toast.success("YouTube channel connected");
+				await fetchChannels();
 			}
 		} catch {
 			toast.error("Failed to start YouTube connection");
+		} finally {
 			setConnecting(false);
 		}
 	};
@@ -120,10 +165,14 @@ function DashboardPage() {
 				</p>
 			</div>
 
-			{loading ? (
+			{loading || connecting ? (
 				<div className="space-y-4">
 					<Skeleton className="h-32 w-full" />
-					<Skeleton className="h-32 w-full" />
+					{connecting && (
+						<p className="text-center text-muted-foreground text-sm">
+							Connecting your YouTube channel...
+						</p>
+					)}
 				</div>
 			) : channels.length === 0 ? (
 				<Card>

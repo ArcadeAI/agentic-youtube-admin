@@ -26,7 +26,7 @@ const trackingService = new TrackingService(prisma);
 const schedulerService = new SchedulerService(prisma);
 const notificationService = new NotificationService(prisma);
 const scannerService = new ScannerService(prisma, schedulerService);
-const libraryService = new LibraryService(prisma);
+const libraryService = new LibraryService();
 
 // Initialize Mastra workflows and connect to scanner
 const mastra = createMastraInstance(youtubeService, trackingService, prisma);

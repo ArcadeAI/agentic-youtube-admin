@@ -1,5 +1,4 @@
 import { getArcadeClient } from "./client";
-import { AuthRequiredError } from "./errors";
 
 export type AuthStatus =
 	| { authorized: true }
@@ -22,7 +21,11 @@ export async function checkAuthStatus(authId: string): Promise<AuthStatus> {
 	}
 }
 
-export async function startAuthFlow(userId: string): Promise<string> {
+export type AuthFlowResult =
+	| { status: "redirect"; authUrl: string }
+	| { status: "already_authorized" };
+
+export async function startAuthFlow(userId: string): Promise<AuthFlowResult> {
 	const client = getArcadeClient();
 
 	const auth = await client.auth.start(userId, "google", {
@@ -33,8 +36,8 @@ export async function startAuthFlow(userId: string): Promise<string> {
 	});
 
 	if (!auth.url) {
-		throw new AuthRequiredError("unknown");
+		return { status: "already_authorized" };
 	}
 
-	return auth.url;
+	return { status: "redirect", authUrl: auth.url };
 }
