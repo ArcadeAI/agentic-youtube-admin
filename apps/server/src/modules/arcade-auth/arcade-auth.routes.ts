@@ -1,7 +1,11 @@
 import { getArcadeClient } from "@agentic-youtube-admin/arcade";
 import { auth } from "@agentic-youtube-admin/auth";
+import prisma from "@agentic-youtube-admin/db";
 import { env } from "@agentic-youtube-admin/env/server";
 import { Elysia, t } from "elysia";
+import { YouTubeService } from "../youtube/youtube.service";
+
+const youtubeService = new YouTubeService(prisma);
 
 export const arcadeAuthRoutes = new Elysia({ prefix: "/api/arcade" }).get(
 	"/verify",
@@ -40,6 +44,29 @@ export const arcadeAuthRoutes = new Elysia({ prefix: "/api/arcade" }).get(
 				`${env.CORS_ORIGIN}/dashboard?youtube=error`,
 				302,
 			);
+		}
+
+		// Create Account record linking Arcade identity to local user
+		const arcadeUserId = session.user.email;
+		const existing = await prisma.account.findFirst({
+			where: { userId: session.user.id, providerId: "arcade" },
+		});
+		if (!existing) {
+			await prisma.account.create({
+				data: {
+					id: crypto.randomUUID(),
+					accountId: arcadeUserId,
+					providerId: "arcade",
+					userId: session.user.id,
+				},
+			});
+		}
+
+		// Sync channel data (best-effort — user can retry from dashboard)
+		try {
+			await youtubeService.connectChannel(session.user.id, arcadeUserId);
+		} catch (err) {
+			console.error("Channel sync after OAuth failed:", err);
 		}
 
 		// Success — redirect to dashboard
