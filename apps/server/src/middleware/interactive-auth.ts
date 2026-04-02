@@ -1,39 +1,31 @@
-import prisma from "@agentic-youtube-admin/db";
 import { env } from "@agentic-youtube-admin/env/server";
+import { verifyAccessToken } from "better-auth/oauth2";
 
 export interface InteractiveAuthResult {
 	userId: string;
-	arcadeUserId: string;
 }
 
 export async function authenticateInteractive(
 	request: Request,
 ): Promise<InteractiveAuthResult> {
 	const authHeader = request.headers.get("authorization");
-	const apiKey = authHeader?.replace("Bearer ", "");
+	const token = authHeader?.replace("Bearer ", "");
 
-	if (!apiKey || apiKey !== env.INTERACTIVE_API_KEY) {
+	if (!token) {
 		throw new Response("Unauthorized", { status: 401 });
 	}
 
-	const arcadeUserId = request.headers.get("x-arcade-user-id");
-	if (!arcadeUserId) {
-		throw new Response("Missing X-Arcade-User-Id header", {
-			status: 400,
-		});
-	}
-
-	const user = await prisma.user.findFirst({
-		where: {
-			accounts: {
-				some: { accountId: arcadeUserId, providerId: "arcade" },
-			},
+	const payload = await verifyAccessToken(token, {
+		verifyOptions: {
+			issuer: `${env.BETTER_AUTH_URL}/api/auth`,
+			audience: env.BETTER_AUTH_URL,
 		},
+		scopes: ["openid"],
 	});
 
-	if (!user) {
-		throw new Response("User not found", { status: 403 });
+	if (!payload.sub) {
+		throw new Response("Invalid token: missing sub claim", { status: 401 });
 	}
 
-	return { userId: user.id, arcadeUserId };
+	return { userId: payload.sub };
 }

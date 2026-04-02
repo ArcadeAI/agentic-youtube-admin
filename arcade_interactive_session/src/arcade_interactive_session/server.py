@@ -11,24 +11,30 @@ Provides tools for remotely controlling the YouTube analytics platform:
 from typing import Annotated, Optional
 
 from arcade.sdk import ToolContext, tool
-from arcade.sdk.auth import requires_secrets
+from arcade.sdk.auth import OAuth2
 
 from .elysia_client import ElysiaClient
 
+# The provider_id must match the OAuth2 provider configured in the user's Arcade account
+YT_ADMIN_AUTH = OAuth2(
+    provider_id="yt-admin",
+    scopes=["openid"],
+)
+
 
 def _get_client(context: ToolContext) -> ElysiaClient:
-    """Create an authenticated Elysia client from Arcade secrets."""
-    api_key = context.get_secret("INTERACTIVE_API_KEY")
+    """Create an authenticated Elysia client using the OAuth2 access token."""
     base_url = context.get_secret("ELYSIA_BASE_URL")
-    user_id = context.authorization.user_id if context.authorization else "unknown"
-    return ElysiaClient(base_url=base_url, api_key=api_key, user_id=user_id)
+    token = context.authorization.token
+    return ElysiaClient(base_url=base_url, token=token)
 
 
 # ── Notification Tools ────────────────────────────────────────────────────────
 
 
 @tool(
-    requires_secrets=["INTERACTIVE_API_KEY", "ELYSIA_BASE_URL"],
+    requires_auth=YT_ADMIN_AUTH,
+    requires_secrets=["ELYSIA_BASE_URL"],
 )
 async def list_notifications(
     context: ToolContext,
@@ -49,7 +55,8 @@ async def list_notifications(
 
 
 @tool(
-    requires_secrets=["INTERACTIVE_API_KEY", "ELYSIA_BASE_URL"],
+    requires_auth=YT_ADMIN_AUTH,
+    requires_secrets=["ELYSIA_BASE_URL"],
 )
 async def create_notification(
     context: ToolContext,
@@ -76,7 +83,8 @@ async def create_notification(
 
 
 @tool(
-    requires_secrets=["INTERACTIVE_API_KEY", "ELYSIA_BASE_URL"],
+    requires_auth=YT_ADMIN_AUTH,
+    requires_secrets=["ELYSIA_BASE_URL"],
 )
 async def delete_notification(
     context: ToolContext,
@@ -93,7 +101,8 @@ async def delete_notification(
 
 
 @tool(
-    requires_secrets=["INTERACTIVE_API_KEY", "ELYSIA_BASE_URL"],
+    requires_auth=YT_ADMIN_AUTH,
+    requires_secrets=["ELYSIA_BASE_URL"],
 )
 async def list_schedules(
     context: ToolContext,
@@ -113,7 +122,8 @@ async def list_schedules(
 
 
 @tool(
-    requires_secrets=["INTERACTIVE_API_KEY", "ELYSIA_BASE_URL"],
+    requires_auth=YT_ADMIN_AUTH,
+    requires_secrets=["ELYSIA_BASE_URL"],
 )
 async def create_schedule(
     context: ToolContext,
@@ -138,7 +148,8 @@ async def create_schedule(
 
 
 @tool(
-    requires_secrets=["INTERACTIVE_API_KEY", "ELYSIA_BASE_URL"],
+    requires_auth=YT_ADMIN_AUTH,
+    requires_secrets=["ELYSIA_BASE_URL"],
 )
 async def delete_schedule(
     context: ToolContext,
@@ -155,7 +166,8 @@ async def delete_schedule(
 
 
 @tool(
-    requires_secrets=["INTERACTIVE_API_KEY", "ELYSIA_BASE_URL"],
+    requires_auth=YT_ADMIN_AUTH,
+    requires_secrets=["ELYSIA_BASE_URL"],
 )
 async def get_channel_analytics(
     context: ToolContext,
@@ -185,7 +197,8 @@ async def get_channel_analytics(
 
 
 @tool(
-    requires_secrets=["INTERACTIVE_API_KEY", "ELYSIA_BASE_URL"],
+    requires_auth=YT_ADMIN_AUTH,
+    requires_secrets=["ELYSIA_BASE_URL"],
 )
 async def summarize_video(
     context: ToolContext,
@@ -202,7 +215,8 @@ async def summarize_video(
 
 
 @tool(
-    requires_secrets=["INTERACTIVE_API_KEY", "ELYSIA_BASE_URL"],
+    requires_auth=YT_ADMIN_AUTH,
+    requires_secrets=["ELYSIA_BASE_URL"],
 )
 async def search_in_channel(
     context: ToolContext,

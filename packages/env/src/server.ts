@@ -9,7 +9,7 @@ export const env = createEnv({
 		BETTER_AUTH_URL: z.url(),
 		CORS_ORIGIN: z.url(),
 		ARCADE_API_KEY: z.string().min(1),
-		INTERACTIVE_API_KEY: z.string().min(1),
+		INTERACTIVE_API_KEY: z.string().min(1).optional(),
 		RESEND_API_KEY: z.string().min(1),
 		PASSKEY_RP_ID: z.string().min(1),
 		RESEND_FROM_EMAIL: z.string().default("noreply@yourdomain.com"),

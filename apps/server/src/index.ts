@@ -51,7 +51,7 @@ const app = new Elysia()
 		cors({
 			origin: env.CORS_ORIGIN,
 			methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-			allowedHeaders: ["Content-Type", "Authorization", "X-Arcade-User-Id"],
+			allowedHeaders: ["Content-Type", "Authorization"],
 			credentials: true,
 		}),
 	)

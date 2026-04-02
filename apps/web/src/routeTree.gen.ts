@@ -9,11 +9,18 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as ConsentRouteImport } from './routes/consent'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ChannelsChannelIdRouteImport } from './routes/channels.$channelId'
 
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -22,6 +29,11 @@ const LoginRoute = LoginRouteImport.update({
 const DashboardRoute = DashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConsentRoute = ConsentRouteImport.update({
+  id: '/consent',
+  path: '/consent',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -37,40 +49,74 @@ const ChannelsChannelIdRoute = ChannelsChannelIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/consent': typeof ConsentRoute
   '/dashboard': typeof DashboardRoute
   '/login': typeof LoginRoute
+  '/settings': typeof SettingsRoute
   '/channels/$channelId': typeof ChannelsChannelIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/consent': typeof ConsentRoute
   '/dashboard': typeof DashboardRoute
   '/login': typeof LoginRoute
+  '/settings': typeof SettingsRoute
   '/channels/$channelId': typeof ChannelsChannelIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/consent': typeof ConsentRoute
   '/dashboard': typeof DashboardRoute
   '/login': typeof LoginRoute
+  '/settings': typeof SettingsRoute
   '/channels/$channelId': typeof ChannelsChannelIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/dashboard' | '/login' | '/channels/$channelId'
+  fullPaths:
+    | '/'
+    | '/consent'
+    | '/dashboard'
+    | '/login'
+    | '/settings'
+    | '/channels/$channelId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/dashboard' | '/login' | '/channels/$channelId'
-  id: '__root__' | '/' | '/dashboard' | '/login' | '/channels/$channelId'
+  to:
+    | '/'
+    | '/consent'
+    | '/dashboard'
+    | '/login'
+    | '/settings'
+    | '/channels/$channelId'
+  id:
+    | '__root__'
+    | '/'
+    | '/consent'
+    | '/dashboard'
+    | '/login'
+    | '/settings'
+    | '/channels/$channelId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ConsentRoute: typeof ConsentRoute
   DashboardRoute: typeof DashboardRoute
   LoginRoute: typeof LoginRoute
+  SettingsRoute: typeof SettingsRoute
   ChannelsChannelIdRoute: typeof ChannelsChannelIdRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -83,6 +129,13 @@ declare module '@tanstack/react-router' {
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/consent': {
+      id: '/consent'
+      path: '/consent'
+      fullPath: '/consent'
+      preLoaderRoute: typeof ConsentRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -104,8 +157,10 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ConsentRoute: ConsentRoute,
   DashboardRoute: DashboardRoute,
   LoginRoute: LoginRoute,
+  SettingsRoute: SettingsRoute,
   ChannelsChannelIdRoute: ChannelsChannelIdRoute,
 }
 export const routeTree = rootRouteImport

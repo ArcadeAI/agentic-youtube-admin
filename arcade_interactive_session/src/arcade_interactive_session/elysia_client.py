@@ -6,12 +6,11 @@ import httpx
 class ElysiaClient:
     """Authenticated HTTP client for the Elysia server's interactive API."""
 
-    def __init__(self, base_url: str, api_key: str, user_id: str):
+    def __init__(self, base_url: str, token: str):
         self.client = httpx.AsyncClient(
             base_url=base_url,
             headers={
-                "Authorization": f"Bearer {api_key}",
-                "X-Arcade-User-Id": user_id,
+                "Authorization": f"Bearer {token}",
                 "Content-Type": "application/json",
             },
             timeout=30.0,

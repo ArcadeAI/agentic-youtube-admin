@@ -1,9 +1,10 @@
 import { createPrismaClient } from "@agentic-youtube-admin/db";
 import { env } from "@agentic-youtube-admin/env/server";
+import { oauthProvider } from "@better-auth/oauth-provider";
 import { passkey } from "@better-auth/passkey";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
-import { magicLink } from "better-auth/plugins";
+import { jwt, magicLink } from "better-auth/plugins";
 import { Resend } from "resend";
 
 const resend = new Resend(env.RESEND_API_KEY);
@@ -16,6 +17,7 @@ export function createAuth() {
 			provider: "postgresql",
 		}),
 
+		disabledPaths: ["/token"],
 		trustedOrigins: [env.CORS_ORIGIN],
 		secret: env.BETTER_AUTH_SECRET,
 		baseURL: env.BETTER_AUTH_URL,
@@ -27,6 +29,15 @@ export function createAuth() {
 			},
 		},
 		plugins: [
+			jwt(),
+			oauthProvider({
+				loginPage: "/login",
+				consentPage: "/consent",
+				scopes: ["openid", "profile", "email", "offline_access"],
+				accessTokenExpiresIn: 3600,
+				refreshTokenExpiresIn: 2592000,
+				allowDynamicClientRegistration: true,
+			}),
 			magicLink({
 				sendMagicLink: async ({ email, url }) => {
 					await resend.emails.send({
