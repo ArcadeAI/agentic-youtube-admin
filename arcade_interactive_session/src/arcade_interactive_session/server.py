@@ -8,6 +8,7 @@ Provides tools for remotely controlling the YouTube analytics platform:
 - Transcript search
 """
 
+import logging
 import sys
 from typing import Annotated, Optional
 
@@ -15,7 +16,9 @@ import httpx
 from arcade_mcp_server import Context, MCPApp
 from arcade_mcp_server.auth import OAuth2
 
-app = MCPApp(name="arcade_interactive_session", version="1.0.0", log_level="DEBUG")
+logger = logging.getLogger(__name__)
+
+app = MCPApp(name="arcade_interactive_session", version="1.2.0", log_level="DEBUG")
 
 # The provider_id must match the OAuth2 provider configured in the user's Arcade account
 YT_ADMIN_AUTH = OAuth2(
@@ -28,6 +31,7 @@ def _get_client(context: Context) -> httpx.AsyncClient:
     """Create an authenticated HTTP client using the OAuth2 access token."""
     base_url = context.get_secret("ELYSIA_BASE_URL")
     token = context.get_auth_token_or_empty()
+    logger.info("[http] base_url=%s token_len=%d", base_url, len(token) if token else 0)
     return httpx.AsyncClient(
         base_url=base_url,
         headers={
@@ -40,9 +44,18 @@ def _get_client(context: Context) -> httpx.AsyncClient:
 
 async def _parse_response(resp: httpx.Response) -> dict:
     """Raise on HTTP errors, then parse JSON — with diagnostics on failure."""
+    logger.info(
+        "[http] %s %s → status=%d content_length=%s content_type=%s",
+        resp.request.method,
+        resp.url,
+        resp.status_code,
+        resp.headers.get("content-length", "missing"),
+        resp.headers.get("content-type", "missing"),
+    )
     resp.raise_for_status()
-    text = resp.text
-    if not text:
+    raw = resp.content
+    logger.info("[http] raw body (%d bytes): %s", len(raw), raw[:500])
+    if not raw:
         raise ValueError(
             f"Empty response body from {resp.request.method} {resp.url} "
             f"(status {resp.status_code}, headers: {dict(resp.headers)})"

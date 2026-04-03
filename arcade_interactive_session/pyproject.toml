@@ -1,6 +1,6 @@
 [project]
 name = "arcade_interactive_session"
-version = "1.0.0"
+version = "1.2.0"
 description = "Interactive Session MCP Server — remote control for the YouTube analytics platform"
 requires-python = ">=3.10"
 dependencies = [

@@ -20,13 +20,21 @@ export const interactiveSessionRoutes = new Elysia({
 	.get(
 		"/notifications",
 		async ({ request, query }) => {
+			console.log("[interactive] GET /notifications – starting auth");
 			const auth = await authenticateInteractive(request);
+			console.log("[interactive] authenticated userId=%s", auth.userId);
 			const items = await notificationService.list(auth.userId);
+			console.log("[interactive] fetched %d notifications", items.length);
 			const cursor = query.page_token
 				? decodePageToken(query.page_token)
 				: null;
 			const limit = cursor?.limit ?? DEFAULT_PAGE_SIZE;
-			return paginateResults(items, limit);
+			const result = paginateResults(items, limit);
+			console.log(
+				"[interactive] GET /notifications response: %s",
+				JSON.stringify(result),
+			);
+			return result;
 		},
 		{
 			query: t.Object({
