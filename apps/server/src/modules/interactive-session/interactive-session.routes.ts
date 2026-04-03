@@ -20,19 +20,60 @@ export const interactiveSessionRoutes = new Elysia({
 	.get(
 		"/notifications",
 		async ({ request, query }) => {
-			console.log("[interactive] GET /notifications – starting auth");
-			const auth = await authenticateInteractive(request);
-			console.log("[interactive] authenticated userId=%s", auth.userId);
+			// ── DEBUG: raw request inspection ──
+			const hdrs: Record<string, string> = {};
+			request.headers.forEach((v, k) => {
+				hdrs[k] =
+					k.toLowerCase() === "authorization"
+						? `${v.slice(0, 20)}…(len=${v.length})`
+						: v;
+			});
+			console.log("[interactive] GET /notifications");
+			console.log(
+				"[interactive]   method=%s url=%s",
+				request.method,
+				request.url,
+			);
+			console.log("[interactive]   headers=%s", JSON.stringify(hdrs, null, 2));
+
+			const authHeader = request.headers.get("authorization");
+			console.log(
+				"[interactive]   authorization present=%s length=%d bearer_prefix=%s",
+				!!authHeader,
+				authHeader?.length ?? 0,
+				authHeader?.startsWith("Bearer ") ?? false,
+			);
+			const rawToken = authHeader?.replace("Bearer ", "") ?? "";
+			console.log(
+				"[interactive]   token length=%d first20=%s",
+				rawToken.length,
+				rawToken.slice(0, 20),
+			);
+			// ── END DEBUG ──
+
+			let auth: { userId: string };
+			try {
+				auth = await authenticateInteractive(request);
+			} catch (err) {
+				const errStr =
+					err instanceof Error ? (err.stack ?? err.message) : String(err);
+				console.error("[interactive]   auth FAILED:", errStr);
+				return new Response(JSON.stringify({ error: errStr }), {
+					status: 401,
+					headers: { "Content-Type": "application/json" },
+				});
+			}
+			console.log("[interactive]   auth OK userId=%s", auth.userId);
 			const items = await notificationService.list(auth.userId);
-			console.log("[interactive] fetched %d notifications", items.length);
+			console.log("[interactive]   fetched %d notifications", items.length);
 			const cursor = query.page_token
 				? decodePageToken(query.page_token)
 				: null;
 			const limit = cursor?.limit ?? DEFAULT_PAGE_SIZE;
 			const result = paginateResults(items, limit);
 			console.log(
-				"[interactive] GET /notifications response: %s",
-				JSON.stringify(result),
+				"[interactive]   response: %s",
+				JSON.stringify(result).slice(0, 500),
 			);
 			return result;
 		},

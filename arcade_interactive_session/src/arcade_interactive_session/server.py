@@ -8,7 +8,6 @@ Provides tools for remotely controlling the YouTube analytics platform:
 - Transcript search
 """
 
-import logging
 import sys
 from typing import Annotated, Optional
 
@@ -16,9 +15,7 @@ import httpx
 from arcade_mcp_server import Context, MCPApp
 from arcade_mcp_server.auth import OAuth2
 
-logger = logging.getLogger(__name__)
-
-app = MCPApp(name="arcade_interactive_session", version="1.2.0", log_level="DEBUG")
+app = MCPApp(name="arcade_interactive_session", version="1.3.0", log_level="DEBUG")
 
 # The provider_id must match the OAuth2 provider configured in the user's Arcade account
 YT_ADMIN_AUTH = OAuth2(
@@ -27,11 +24,17 @@ YT_ADMIN_AUTH = OAuth2(
 )
 
 
-def _get_client(context: Context) -> httpx.AsyncClient:
-    """Create an authenticated HTTP client using the OAuth2 access token."""
+def _get_client(context: Context) -> tuple[httpx.AsyncClient, str]:
+    """Create an authenticated HTTP client. Returns (client, base_url) for logging."""
     base_url = context.get_secret("ELYSIA_BASE_URL")
     token = context.get_auth_token_or_empty()
-    logger.info("[http] base_url=%s token_len=%d", base_url, len(token) if token else 0)
+
+    if not token:
+        raise ValueError(
+            f"No auth token available in context. "
+            f"authorization={context.authorization!r}, user_id={context.user_id!r}"
+        )
+
     return httpx.AsyncClient(
         base_url=base_url,
         headers={
@@ -39,46 +42,34 @@ def _get_client(context: Context) -> httpx.AsyncClient:
             "Content-Type": "application/json",
         },
         timeout=30.0,
-    )
+    ), base_url
 
 
-async def _parse_response(resp: httpx.Response) -> dict:
-    """Raise on HTTP errors, then parse JSON — with diagnostics on failure."""
-    logger.info(
-        "[http] %s %s → status=%d content_length=%s content_type=%s",
-        resp.request.method,
-        resp.url,
-        resp.status_code,
-        resp.headers.get("content-length", "missing"),
-        resp.headers.get("content-type", "missing"),
-    )
-    resp.raise_for_status()
-    raw = resp.content
-    logger.info("[http] raw body (%d bytes): %s", len(raw), raw[:500])
-    if not raw:
-        raise ValueError(
-            f"Empty response body from {resp.request.method} {resp.url} "
-            f"(status {resp.status_code}, headers: {dict(resp.headers)})"
-        )
-    return resp.json()
+async def _request(
+    context: Context,
+    method: str,
+    path: str,
+    params: dict | None = None,
+    json: dict | None = None,
+) -> dict:
+    """Make an authenticated request and return parsed JSON."""
+    client, base_url = _get_client(context)
+    async with client:
+        resp = await client.request(method, path, params=params, json=json)
 
-
-async def _get(context: Context, path: str, params: dict | None = None) -> dict:
-    async with _get_client(context) as client:
-        resp = await client.get(path, params=params)
-        return await _parse_response(resp)
-
-
-async def _post(context: Context, path: str, json: dict | None = None) -> dict:
-    async with _get_client(context) as client:
-        resp = await client.post(path, json=json)
-        return await _parse_response(resp)
-
-
-async def _delete(context: Context, path: str) -> dict:
-    async with _get_client(context) as client:
-        resp = await client.delete(path)
-        return await _parse_response(resp)
+        # Always try to surface the response body in errors
+        body = resp.text
+        if resp.status_code >= 400:
+            raise ValueError(
+                f"{method} {base_url}{path} returned {resp.status_code}: {body[:500]}"
+            )
+        try:
+            return resp.json()
+        except Exception as exc:
+            raise ValueError(
+                f"{method} {base_url}{path} returned {resp.status_code} but body is not JSON "
+                f"(content-type={resp.headers.get('content-type', 'missing')}): {body[:500]}"
+            ) from exc
 
 
 # ── Notification Tools ────────────────────────────────────────────────────────
@@ -100,7 +91,7 @@ async def list_notifications(
     params = {}
     if page_token:
         params["page_token"] = page_token
-    return await _get(context, "/api/v1/interactive/notifications", params=params)
+    return await _request(context, "GET", "/api/v1/interactive/notifications", params=params)
 
 
 @app.tool(
@@ -118,14 +109,14 @@ async def create_notification(
     channel_id: Annotated[Optional[str], "Channel ID to monitor (optional)"] = None,
 ) -> dict:
     """Create a new notification configuration."""
-    body = {
+    body: dict[str, str] = {
         "name": name,
         "notification_type": notification_type,
         "delivery_method": delivery_method,
     }
     if channel_id:
         body["channel_id"] = channel_id
-    return await _post(context, "/api/v1/interactive/notifications", json=body)
+    return await _request(context, "POST", "/api/v1/interactive/notifications", json=body)
 
 
 @app.tool(
@@ -137,7 +128,7 @@ async def delete_notification(
     notification_id: Annotated[str, "ID of the notification to delete"],
 ) -> dict:
     """Delete a notification configuration."""
-    return await _delete(context, f"/api/v1/interactive/notifications/{notification_id}")
+    return await _request(context, "DELETE", f"/api/v1/interactive/notifications/{notification_id}")
 
 
 # ── Scheduler Tools ───────────────────────────────────────────────────────────
@@ -158,7 +149,7 @@ async def list_schedules(
     params = {}
     if page_token:
         params["page_token"] = page_token
-    return await _get(context, "/api/v1/interactive/schedules", params=params)
+    return await _request(context, "GET", "/api/v1/interactive/schedules", params=params)
 
 
 @app.tool(
@@ -175,13 +166,13 @@ async def create_schedule(
     channel_id: Annotated[Optional[str], "Channel ID for channel-specific scans (optional)"] = None,
 ) -> dict:
     """Create a new scan schedule."""
-    body = {
+    body: dict[str, str] = {
         "scan_type": scan_type,
         "cron_expression": cron_expression,
     }
     if channel_id:
         body["channel_id"] = channel_id
-    return await _post(context, "/api/v1/interactive/schedules", json=body)
+    return await _request(context, "POST", "/api/v1/interactive/schedules", json=body)
 
 
 @app.tool(
@@ -193,7 +184,7 @@ async def delete_schedule(
     schedule_id: Annotated[str, "ID of the schedule to delete"],
 ) -> dict:
     """Delete a scan schedule."""
-    return await _delete(context, f"/api/v1/interactive/schedules/{schedule_id}")
+    return await _request(context, "DELETE", f"/api/v1/interactive/schedules/{schedule_id}")
 
 
 # ── Reporting Tools ───────────────────────────────────────────────────────────
@@ -222,8 +213,8 @@ async def get_channel_analytics(
         params["end_date"] = end_date
     if page_token:
         params["page_token"] = page_token
-    return await _get(
-        context, f"/api/v1/interactive/channels/{channel_id}/analytics", params=params
+    return await _request(
+        context, "GET", f"/api/v1/interactive/channels/{channel_id}/analytics", params=params
     )
 
 
@@ -239,7 +230,7 @@ async def summarize_video(
 
     Returns the video title and a summary generated from the transcription.
     """
-    return await _get(context, f"/api/v1/interactive/videos/{video_id}/summary")
+    return await _request(context, "GET", f"/api/v1/interactive/videos/{video_id}/summary")
 
 
 @app.tool(
@@ -260,8 +251,8 @@ async def search_in_channel(
     params: dict[str, str] = {"q": query}
     if page_token:
         params["page_token"] = page_token
-    return await _get(
-        context, f"/api/v1/interactive/channels/{channel_id}/search", params=params
+    return await _request(
+        context, "GET", f"/api/v1/interactive/channels/{channel_id}/search", params=params
     )
 
 
