@@ -16,6 +16,7 @@ export async function authenticateInteractive(
 	}
 
 	const payload = await verifyAccessToken(token, {
+		jwksUrl: `${env.BETTER_AUTH_URL}/api/auth/jwks`,
 		verifyOptions: {
 			issuer: `${env.BETTER_AUTH_URL}/api/auth`,
 			audience: env.BETTER_AUTH_URL,

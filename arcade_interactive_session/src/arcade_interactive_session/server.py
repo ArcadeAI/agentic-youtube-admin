@@ -38,25 +38,34 @@ def _get_client(context: Context) -> httpx.AsyncClient:
     )
 
 
+async def _parse_response(resp: httpx.Response) -> dict:
+    """Raise on HTTP errors, then parse JSON — with diagnostics on failure."""
+    resp.raise_for_status()
+    text = resp.text
+    if not text:
+        raise ValueError(
+            f"Empty response body from {resp.request.method} {resp.url} "
+            f"(status {resp.status_code}, headers: {dict(resp.headers)})"
+        )
+    return resp.json()
+
+
 async def _get(context: Context, path: str, params: dict | None = None) -> dict:
     async with _get_client(context) as client:
         resp = await client.get(path, params=params)
-        resp.raise_for_status()
-        return resp.json()
+        return await _parse_response(resp)
 
 
 async def _post(context: Context, path: str, json: dict | None = None) -> dict:
     async with _get_client(context) as client:
         resp = await client.post(path, json=json)
-        resp.raise_for_status()
-        return resp.json()
+        return await _parse_response(resp)
 
 
 async def _delete(context: Context, path: str) -> dict:
     async with _get_client(context) as client:
         resp = await client.delete(path)
-        resp.raise_for_status()
-        return resp.json()
+        return await _parse_response(resp)
 
 
 # ── Notification Tools ────────────────────────────────────────────────────────
