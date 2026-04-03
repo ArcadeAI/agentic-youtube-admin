@@ -31,8 +31,8 @@ export function createAuth() {
 		plugins: [
 			jwt(),
 			oauthProvider({
-				loginPage: "/login",
-				consentPage: "/consent",
+				loginPage: `${env.CORS_ORIGIN}/login`,
+				consentPage: `${env.CORS_ORIGIN}/consent`,
 				scopes: ["openid", "profile", "email", "offline_access"],
 				accessTokenExpiresIn: 3600,
 				refreshTokenExpiresIn: 2592000,
