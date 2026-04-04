@@ -16,7 +16,7 @@ import httpx
 from arcade_mcp_server import Context, MCPApp
 from arcade_mcp_server.auth import OAuth2
 
-app = MCPApp(name="arcade_interactive_session", version="1.5.0", log_level="DEBUG")
+app = MCPApp(name="arcade_interactive_session", version="1.6.0", log_level="DEBUG")
 
 # The provider_id must match the OAuth2 provider configured in the user's Arcade account
 YT_ADMIN_AUTH = OAuth2(
@@ -209,6 +209,20 @@ async def list_active_processes(context: Context) -> dict:
     Use get_process_status for detailed information about a specific process.
     """
     return await _request(context, "GET", "/api/v1/interactive/processes")
+
+
+@app.tool(
+    requires_auth=YT_ADMIN_AUTH,
+    requires_secrets=["ELYSIA_BASE_URL"],
+)
+async def run_tracked_poll(context: Context) -> dict:
+    """Run the tracked channel poll now for all actively tracked channels.
+
+    Polls public data (videos, subscriber counts) for every tracked channel,
+    then computes engagement scores. Returns a summary with channels polled,
+    scored, and any errors encountered.
+    """
+    return await _request(context, "POST", "/api/v1/interactive/processes/tracked-poll")
 
 
 # ── Notification Tools ───────────────────────────────────────────────────────

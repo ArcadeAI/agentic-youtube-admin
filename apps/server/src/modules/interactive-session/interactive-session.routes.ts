@@ -303,6 +303,13 @@ export function createInteractiveSessionRoutes(scannerService: ScannerService) {
 				const auth = await authenticateInteractive(request);
 				return scannerService.listActiveProcesses(auth.userId);
 			})
+			.post("/processes/tracked-poll", async ({ request }) => {
+				const auth = await authenticateInteractive(request);
+				const arcadeUserId = await scannerService.resolveArcadeUserId(
+					auth.userId,
+				);
+				return scannerService.runTrackedDailyPoll(auth.userId, arcadeUserId);
+			})
 			// ── Notifications ────────────────────────────────────────────────────
 			.get(
 				"/notifications",
