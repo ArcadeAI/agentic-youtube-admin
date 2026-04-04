@@ -16,7 +16,7 @@ import httpx
 from arcade_mcp_server import Context, MCPApp
 from arcade_mcp_server.auth import OAuth2
 
-app = MCPApp(name="arcade_interactive_session", version="1.4.0", log_level="DEBUG")
+app = MCPApp(name="arcade_interactive_session", version="1.5.0", log_level="DEBUG")
 
 # The provider_id must match the OAuth2 provider configured in the user's Arcade account
 YT_ADMIN_AUTH = OAuth2(
@@ -114,6 +114,101 @@ async def get_external_tracking(context: Context) -> dict:
     tracking status, last poll time, notes, and associated scan schedules.
     """
     return await _request(context, "GET", "/api/v1/interactive/tracking")
+
+
+# ── Remote Control Tools ──────────────────────────────────────────────────────
+
+
+@app.tool(
+    requires_auth=YT_ADMIN_AUTH,
+    requires_secrets=["ELYSIA_BASE_URL"],
+)
+async def track_channel(
+    context: Context,
+    channel_id_or_handle: Annotated[str, "YouTube channel ID (UC...) or @handle of the channel to start tracking"],
+    notes: Annotated[Optional[str], "Free-text note explaining why this channel is being tracked (stored internally)"] = None,
+) -> dict:
+    """Add an external YouTube channel to the tracking system.
+
+    Creates or reactivates a tracked channel record. Channel metadata (title,
+    thumbnail, handle) will be populated automatically on the next poll.
+    """
+    body: dict[str, str] = {"channel_id": channel_id_or_handle}
+    if notes:
+        body["notes"] = notes
+    return await _request(context, "POST", "/api/v1/interactive/tracking/track", json=body)
+
+
+@app.tool(
+    requires_auth=YT_ADMIN_AUTH,
+    requires_secrets=["ELYSIA_BASE_URL"],
+)
+async def start_backfill(
+    context: Context,
+    channel_id_or_handle: Annotated[str, "YouTube channel ID (UC...) or @handle of an owned channel to backfill"],
+    start_date: Annotated[Optional[str], "Backfill start date in YYYY-MM-DD format (default: 2 years ago)"] = None,
+    end_date: Annotated[Optional[str], "Backfill end date in YYYY-MM-DD format (default: yesterday)"] = None,
+) -> dict:
+    """Start a historical data backfill for an owned YouTube channel.
+
+    This is a long-running process (minutes to hours depending on channel size).
+    Returns a process ID immediately. Use get_process_status to check progress,
+    cancel_process to abort, or list_active_processes to see all running processes.
+
+    The backfill discovers all videos, then collects analytics, traffic sources,
+    device stats, retention curves, and live stream timelines.
+    """
+    body: dict[str, str] = {"channel_id": channel_id_or_handle}
+    if start_date:
+        body["start_date"] = start_date
+    if end_date:
+        body["end_date"] = end_date
+    return await _request(context, "POST", "/api/v1/interactive/processes/backfill", json=body)
+
+
+@app.tool(
+    requires_auth=YT_ADMIN_AUTH,
+    requires_secrets=["ELYSIA_BASE_URL"],
+)
+async def get_process_status(
+    context: Context,
+    process_id: Annotated[str, "The process ID returned by start_backfill"],
+) -> dict:
+    """Check the status of a running or completed process.
+
+    Returns the process status (running, success, error, canceled),
+    start/completion times, and the result or error message.
+    """
+    return await _request(context, "GET", f"/api/v1/interactive/processes/{process_id}")
+
+
+@app.tool(
+    requires_auth=YT_ADMIN_AUTH,
+    requires_secrets=["ELYSIA_BASE_URL"],
+)
+async def cancel_process(
+    context: Context,
+    process_id: Annotated[str, "The process ID of the running process to cancel"],
+) -> dict:
+    """Cancel a running process.
+
+    Attempts to stop the workflow and marks it as canceled.
+    Has no effect on already-completed processes.
+    """
+    return await _request(context, "POST", f"/api/v1/interactive/processes/{process_id}/cancel")
+
+
+@app.tool(
+    requires_auth=YT_ADMIN_AUTH,
+    requires_secrets=["ELYSIA_BASE_URL"],
+)
+async def list_active_processes(context: Context) -> dict:
+    """List all currently running processes for the authenticated user.
+
+    Returns a list of active process records with their IDs, types, and start times.
+    Use get_process_status for detailed information about a specific process.
+    """
+    return await _request(context, "GET", "/api/v1/interactive/processes")
 
 
 # ── Notification Tools ───────────────────────────────────────────────────────

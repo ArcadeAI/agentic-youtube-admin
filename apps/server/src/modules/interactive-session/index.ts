@@ -4,4 +4,4 @@ export {
 	encodePageToken,
 	paginateResults,
 } from "./interactive-session.pagination";
-export { interactiveSessionRoutes } from "./interactive-session.routes";
+export { createInteractiveSessionRoutes } from "./interactive-session.routes";

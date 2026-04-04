@@ -2,6 +2,12 @@ import type { PrismaClient } from "@agentic-youtube-admin/db";
 import type { Mastra } from "@mastra/core";
 import type { SchedulerService } from "../scheduler/scheduler.service";
 
+/** In-memory map of scan-run ID → Mastra Run for cancellation support. */
+const activeRuns = new Map<
+	string,
+	{ cancel: () => Promise<void>; workflowName: string }
+>();
+
 export class ScannerService {
 	private mastra: Mastra | null = null;
 
@@ -31,10 +37,9 @@ export class ScannerService {
 		channelId: string | null,
 		config: Record<string, unknown> | null,
 	) {
-		const scanRun = await this.schedulerService.createScanRun(
+		const scanRun = await this.schedulerService.createScanRun(scanType, {
 			scheduleId,
-			scanType,
-		);
+		});
 
 		try {
 			const arcadeUserId = await this.resolveArcadeUserId(userId);
@@ -154,6 +159,121 @@ export class ScannerService {
 			`Tracked poll workflow failed: ${result.status === "failed" ? result.error : result.status}`,
 		);
 	}
+
+	// ── Async process management ─────────────────────────────────────────────
+
+	/**
+	 * Start a backfill in the background. Returns the ScanRun ID immediately.
+	 * The workflow runs async; completion updates the ScanRun record.
+	 */
+	async startBackfillAsync(
+		userId: string,
+		channelYoutubeId: string,
+		config?: { startDate?: string; endDate?: string },
+	): Promise<{ processId: string }> {
+		if (!this.mastra) throw new Error("Mastra not initialized");
+
+		const arcadeUserId = await this.resolveArcadeUserId(userId);
+
+		// Resolve YouTube channel ID → internal DB ID
+		const channel = await this.prisma.youTubeChannel.findFirst({
+			where: { userId, channelId: channelYoutubeId },
+			select: { id: true },
+		});
+		if (!channel) {
+			throw new Error(
+				`Owned channel not found for YouTube ID: ${channelYoutubeId}`,
+			);
+		}
+
+		const startDate = config?.startDate ?? this.defaultStartDate();
+		const endDate = config?.endDate ?? this.defaultEndDate();
+
+		const scanRun = await this.schedulerService.createScanRun(
+			"owned_backfill",
+			{ userId },
+		);
+
+		const workflow = this.mastra.getWorkflow("ownedChannelBackfill");
+		const run = await workflow.createRun();
+
+		// Store for cancellation
+		activeRuns.set(scanRun.id, {
+			cancel: () => run.cancel(),
+			workflowName: "ownedChannelBackfill",
+		});
+
+		// Fire-and-forget: don't await, but handle completion
+		run
+			.start({
+				inputData: {
+					arcadeUserId,
+					channelDbId: channel.id,
+					startDate,
+					endDate,
+				},
+			})
+			.then(async (result) => {
+				activeRuns.delete(scanRun.id);
+				const status = result.status === "success" ? "success" : "error";
+				const error =
+					result.status !== "success"
+						? `Workflow ${result.status}: ${"error" in result ? result.error : "unknown"}`
+						: undefined;
+				await this.schedulerService.completeScanRun(
+					scanRun.id,
+					status as "success" | "error",
+					result.status === "success" ? result.result : undefined,
+					error,
+				);
+			})
+			.catch(async (err) => {
+				activeRuns.delete(scanRun.id);
+				await this.schedulerService.completeScanRun(
+					scanRun.id,
+					"error",
+					undefined,
+					err instanceof Error ? err.message : String(err),
+				);
+			});
+
+		return { processId: scanRun.id };
+	}
+
+	async getProcessStatus(processId: string) {
+		const scanRun = await this.schedulerService.getScanRun(processId);
+		if (!scanRun) return null;
+
+		return {
+			id: scanRun.id,
+			scanType: scanRun.scanType,
+			status: scanRun.status,
+			startedAt: scanRun.startedAt,
+			completedAt: scanRun.completedAt,
+			result: scanRun.result,
+			error: scanRun.error,
+		};
+	}
+
+	async cancelProcess(processId: string, userId: string) {
+		const scanRun = await this.schedulerService.getScanRun(processId);
+		if (!scanRun || scanRun.userId !== userId) return null;
+		if (scanRun.status !== "running") return scanRun;
+
+		const entry = activeRuns.get(processId);
+		if (entry) {
+			await entry.cancel();
+			activeRuns.delete(processId);
+		}
+
+		return this.schedulerService.cancelScanRun(processId);
+	}
+
+	async listActiveProcesses(userId: string) {
+		return this.schedulerService.listActiveRunsForUser(userId);
+	}
+
+	// ── Helpers ──────────────────────────────────────────────────────────────
 
 	private defaultStartDate(): string {
 		const d = new Date();

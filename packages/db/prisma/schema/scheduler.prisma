@@ -22,8 +22,10 @@ model ScanSchedule {
 
 model ScanRun {
   id          String    @id @default(cuid())
-  scheduleId  String
-  schedule    ScanSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  scheduleId  String?
+  schedule    ScanSchedule? @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  userId      String?
+  user        User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
   scanType    String
   status      String
   startedAt   DateTime  @default(now())
@@ -34,6 +36,7 @@ model ScanRun {
   createdAt   DateTime  @default(now())
 
   @@index([scheduleId])
+  @@index([userId])
   @@index([status])
   @@map("scan_run")
 }

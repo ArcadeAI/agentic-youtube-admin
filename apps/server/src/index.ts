@@ -5,7 +5,7 @@ import { cors } from "@elysiajs/cors";
 import { Elysia } from "elysia";
 import { createMastraInstance } from "./mastra";
 import { arcadeAuthRoutes } from "./modules/arcade-auth";
-import { interactiveSessionRoutes } from "./modules/interactive-session";
+import { createInteractiveSessionRoutes } from "./modules/interactive-session";
 import { createLibraryRoutes, LibraryService } from "./modules/library";
 import {
 	createNotificationRoutes,
@@ -70,7 +70,7 @@ const app = new Elysia()
 	.use(createNotificationRoutes(notificationService))
 	.use(createScannerRoutes(scannerService))
 	.use(createLibraryRoutes(libraryService))
-	.use(interactiveSessionRoutes)
+	.use(createInteractiveSessionRoutes(scannerService))
 	// Health check
 	.get("/", () => "OK");
 

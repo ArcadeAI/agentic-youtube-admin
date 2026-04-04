@@ -72,10 +72,14 @@ export class SchedulerService {
 		});
 	}
 
-	async createScanRun(scheduleId: string, scanType: string) {
+	async createScanRun(
+		scanType: string,
+		opts: { scheduleId?: string; userId?: string } = {},
+	) {
 		return this.prisma.scanRun.create({
 			data: {
-				scheduleId,
+				scheduleId: opts.scheduleId ?? null,
+				userId: opts.userId ?? null,
 				scanType,
 				status: "running",
 			},
@@ -121,6 +125,24 @@ export class SchedulerService {
 			where: { scheduleId },
 			orderBy: { startedAt: "desc" },
 			take: limit,
+		});
+	}
+
+	async getScanRun(id: string) {
+		return this.prisma.scanRun.findUnique({ where: { id } });
+	}
+
+	async listActiveRunsForUser(userId: string) {
+		return this.prisma.scanRun.findMany({
+			where: { userId, status: "running" },
+			orderBy: { startedAt: "desc" },
+		});
+	}
+
+	async cancelScanRun(id: string) {
+		return this.prisma.scanRun.update({
+			where: { id },
+			data: { status: "canceled", completedAt: new Date() },
 		});
 	}
 }

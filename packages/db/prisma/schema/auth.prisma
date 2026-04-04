@@ -16,6 +16,7 @@ model User {
   scanSchedules       ScanSchedule[]
   notificationConfigs NotificationConfig[]
 
+  scanRuns            ScanRun[]
   oauthclients       OauthClient[]
   oauthrefreshtokens OauthRefreshToken[]
   oauthaccesstokens  OauthAccessToken[]
