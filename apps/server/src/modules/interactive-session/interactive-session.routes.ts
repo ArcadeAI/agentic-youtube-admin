@@ -430,34 +430,48 @@ export function createInteractiveSessionRoutes(scannerService: ScannerService) {
 						auth.userId,
 					);
 
-					const channel = await prisma.youTubeChannel.findFirst({
+					const dateFilter =
+						query.start_date && query.end_date
+							? {
+									date: {
+										gte: new Date(query.start_date),
+										lte: new Date(query.end_date),
+									},
+								}
+							: {};
+
+					// Try owned channel first
+					const ownedChannel = await prisma.youTubeChannel.findFirst({
 						where: { channelId: ytChannelId, userId: auth.userId },
 						select: { id: true },
 					});
-					if (!channel) {
-						return new Response(
-							JSON.stringify({ error: "Channel not found" }),
-							{ status: 404, headers: { "Content-Type": "application/json" } },
-						);
+					if (ownedChannel) {
+						const stats = await prisma.channelDailyStats.findMany({
+							where: { channelId: ownedChannel.id, ...dateFilter },
+							orderBy: { date: "desc" },
+							take: DEFAULT_PAGE_SIZE,
+						});
+						return { items: stats };
 					}
 
-					const stats = await prisma.channelDailyStats.findMany({
-						where: {
-							channelId: channel.id,
-							...(query.start_date && query.end_date
-								? {
-										date: {
-											gte: new Date(query.start_date),
-											lte: new Date(query.end_date),
-										},
-									}
-								: {}),
-						},
-						orderBy: { date: "desc" },
-						take: DEFAULT_PAGE_SIZE,
+					// Fall back to tracked channel
+					const trackedChannel = await prisma.trackedChannel.findFirst({
+						where: { channelId: ytChannelId, userId: auth.userId },
+						select: { id: true },
 					});
+					if (trackedChannel) {
+						const snapshots = await prisma.trackedChannelSnapshot.findMany({
+							where: { channelId: trackedChannel.id, ...dateFilter },
+							orderBy: { date: "desc" },
+							take: DEFAULT_PAGE_SIZE,
+						});
+						return { items: snapshots };
+					}
 
-					return { items: stats };
+					return new Response(JSON.stringify({ error: "Channel not found" }), {
+						status: 404,
+						headers: { "Content-Type": "application/json" },
+					});
 				},
 				{
 					params: t.Object({ channelId: t.String() }),

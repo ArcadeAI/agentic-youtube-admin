@@ -100,7 +100,7 @@ async def get_owned_config(context: Context) -> dict:
     Returns each owned channel with its YouTube channel ID, handle, sync status,
     backfill progress, and associated scan schedules and notification configs.
     """
-    return await _request(context, "GET", "/api/v1/interactive/owned")
+    return {"channels": await _request(context, "GET", "/api/v1/interactive/owned")}
 
 
 @app.tool(
@@ -113,7 +113,7 @@ async def get_external_tracking(context: Context) -> dict:
     Returns each tracked channel with its YouTube channel ID, handle,
     tracking status, last poll time, notes, and associated scan schedules.
     """
-    return await _request(context, "GET", "/api/v1/interactive/tracking")
+    return {"channels": await _request(context, "GET", "/api/v1/interactive/tracking")}
 
 
 # ── Remote Control Tools ──────────────────────────────────────────────────────
@@ -208,7 +208,7 @@ async def list_active_processes(context: Context) -> dict:
     Returns a list of active process records with their IDs, types, and start times.
     Use get_process_status for detailed information about a specific process.
     """
-    return await _request(context, "GET", "/api/v1/interactive/processes")
+    return {"processes": await _request(context, "GET", "/api/v1/interactive/processes")}
 
 
 @app.tool(
