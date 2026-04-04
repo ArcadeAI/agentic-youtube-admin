@@ -418,14 +418,25 @@ export function createInteractiveSessionRoutes(scannerService: ScannerService) {
 				"/channels/:channelId/analytics",
 				async ({ request, params, query }) => {
 					const auth = await authenticateInteractive(request);
-					const channelId = await resolveChannelId(
+					const ytChannelId = await resolveChannelId(
 						params.channelId,
 						auth.userId,
 					);
 
+					const channel = await prisma.youTubeChannel.findFirst({
+						where: { channelId: ytChannelId, userId: auth.userId },
+						select: { id: true },
+					});
+					if (!channel) {
+						return new Response(
+							JSON.stringify({ error: "Channel not found" }),
+							{ status: 404, headers: { "Content-Type": "application/json" } },
+						);
+					}
+
 					const stats = await prisma.channelDailyStats.findMany({
 						where: {
-							channelId,
+							channelId: channel.id,
 							...(query.start_date && query.end_date
 								? {
 										date: {
