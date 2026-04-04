@@ -1,5 +1,4 @@
-import { env } from "@agentic-youtube-admin/env/server";
-import { verifyAccessToken } from "better-auth/oauth2";
+import prisma from "@agentic-youtube-admin/db";
 
 export interface InteractiveAuthResult {
 	userId: string;
@@ -12,21 +11,25 @@ export async function authenticateInteractive(
 	const token = authHeader?.replace("Bearer ", "");
 
 	if (!token) {
-		throw new Response("Unauthorized", { status: 401 });
+		throw new Error("Missing Authorization header");
 	}
 
-	const payload = await verifyAccessToken(token, {
-		jwksUrl: `${env.BETTER_AUTH_URL}/api/auth/jwks`,
-		verifyOptions: {
-			issuer: `${env.BETTER_AUTH_URL}/api/auth`,
-			audience: env.BETTER_AUTH_URL,
-		},
-		scopes: ["openid"],
+	const accessToken = await prisma.oauthAccessToken.findUnique({
+		where: { token },
+		select: { userId: true, expiresAt: true, scopes: true },
 	});
 
-	if (!payload.sub) {
-		throw new Response("Invalid token: missing sub claim", { status: 401 });
+	if (!accessToken?.userId) {
+		throw new Error("Invalid access token");
 	}
 
-	return { userId: payload.sub };
+	if (accessToken.expiresAt && accessToken.expiresAt < new Date()) {
+		throw new Error("Access token expired");
+	}
+
+	if (!accessToken.scopes.includes("openid")) {
+		throw new Error("Insufficient scope");
+	}
+
+	return { userId: accessToken.userId };
 }
