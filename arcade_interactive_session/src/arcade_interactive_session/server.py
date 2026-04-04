@@ -1,6 +1,7 @@
 """Interactive Session MCP Server.
 
 Provides tools for remotely controlling the YouTube analytics platform:
+- System overview (owned channels, tracked channels, schedules, notifications)
 - Notification CRUD
 - Scheduler CRUD
 - Channel analytics reporting
@@ -15,7 +16,7 @@ import httpx
 from arcade_mcp_server import Context, MCPApp
 from arcade_mcp_server.auth import OAuth2
 
-app = MCPApp(name="arcade_interactive_session", version="1.3.0", log_level="DEBUG")
+app = MCPApp(name="arcade_interactive_session", version="1.4.0", log_level="DEBUG")
 
 # The provider_id must match the OAuth2 provider configured in the user's Arcade account
 YT_ADMIN_AUTH = OAuth2(
@@ -72,7 +73,50 @@ async def _request(
             ) from exc
 
 
-# ── Notification Tools ────────────────────────────────────────────────────────
+# ── Overview & Config Tools ──────────────────────────────────────────────────
+
+
+@app.tool(
+    requires_auth=YT_ADMIN_AUTH,
+    requires_secrets=["ELYSIA_BASE_URL"],
+)
+async def get_overview(context: Context) -> dict:
+    """Get a high-level overview of everything the user has set up.
+
+    Returns owned YouTube channels, externally tracked channels,
+    and counts of schedules and notifications. All channel references
+    use YouTube channel IDs and handles, never internal database IDs.
+    """
+    return await _request(context, "GET", "/api/v1/interactive/overview")
+
+
+@app.tool(
+    requires_auth=YT_ADMIN_AUTH,
+    requires_secrets=["ELYSIA_BASE_URL"],
+)
+async def get_owned_config(context: Context) -> dict:
+    """Get detailed configuration for the user's owned YouTube channels.
+
+    Returns each owned channel with its YouTube channel ID, handle, sync status,
+    backfill progress, and associated scan schedules and notification configs.
+    """
+    return await _request(context, "GET", "/api/v1/interactive/owned")
+
+
+@app.tool(
+    requires_auth=YT_ADMIN_AUTH,
+    requires_secrets=["ELYSIA_BASE_URL"],
+)
+async def get_external_tracking(context: Context) -> dict:
+    """Get all externally tracked (competitor) channels and their configuration.
+
+    Returns each tracked channel with its YouTube channel ID, handle,
+    tracking status, last poll time, notes, and associated scan schedules.
+    """
+    return await _request(context, "GET", "/api/v1/interactive/tracking")
+
+
+# ── Notification Tools ───────────────────────────────────────────────────────
 
 
 @app.tool(
@@ -106,7 +150,7 @@ async def create_notification(
         "Type: new_video, milestone_views, engagement_drop, engagement_spike, subscriber_change, custom",
     ],
     delivery_method: Annotated[str, "Delivery method: email, webhook, slack, in_app"],
-    channel_id: Annotated[Optional[str], "Channel ID to monitor (optional)"] = None,
+    channel_id: Annotated[Optional[str], "YouTube channel ID or @handle (optional)"] = None,
 ) -> dict:
     """Create a new notification configuration."""
     body: dict[str, str] = {
@@ -131,7 +175,7 @@ async def delete_notification(
     return await _request(context, "DELETE", f"/api/v1/interactive/notifications/{notification_id}")
 
 
-# ── Scheduler Tools ───────────────────────────────────────────────────────────
+# ── Scheduler Tools ──────────────────────────────────────────────────────────
 
 
 @app.tool(
@@ -163,7 +207,7 @@ async def create_schedule(
         "Type: owned_backfill, owned_daily_sync, tracked_daily_poll, track_new_channel, transcription",
     ],
     cron_expression: Annotated[str, "Cron expression for scheduling (e.g. '0 3 * * *' for daily at 3 AM)"],
-    channel_id: Annotated[Optional[str], "Channel ID for channel-specific scans (optional)"] = None,
+    channel_id: Annotated[Optional[str], "YouTube channel ID or @handle (optional)"] = None,
 ) -> dict:
     """Create a new scan schedule."""
     body: dict[str, str] = {
@@ -187,7 +231,7 @@ async def delete_schedule(
     return await _request(context, "DELETE", f"/api/v1/interactive/schedules/{schedule_id}")
 
 
-# ── Reporting Tools ───────────────────────────────────────────────────────────
+# ── Reporting Tools ──────────────────────────────────────────────────────────
 
 
 @app.tool(
@@ -196,7 +240,7 @@ async def delete_schedule(
 )
 async def get_channel_analytics(
     context: Context,
-    channel_id: Annotated[str, "YouTube channel ID"],
+    channel_id_or_handle: Annotated[str, "YouTube channel ID (UC...) or @handle"],
     start_date: Annotated[Optional[str], "Start date in YYYY-MM-DD format"] = None,
     end_date: Annotated[Optional[str], "End date in YYYY-MM-DD format"] = None,
     page_token: Annotated[Optional[str], "Pagination token"] = None,
@@ -205,6 +249,7 @@ async def get_channel_analytics(
 
     Returns daily channel-level metrics for the specified date range.
     This retrieves data already stored in the system, not from the YouTube API directly.
+    Accepts a YouTube channel ID or @handle.
     """
     params = {}
     if start_date:
@@ -214,7 +259,7 @@ async def get_channel_analytics(
     if page_token:
         params["page_token"] = page_token
     return await _request(
-        context, "GET", f"/api/v1/interactive/channels/{channel_id}/analytics", params=params
+        context, "GET", f"/api/v1/interactive/channels/{channel_id_or_handle}/analytics", params=params
     )
 
 
@@ -239,7 +284,7 @@ async def summarize_video(
 )
 async def search_in_channel(
     context: Context,
-    channel_id: Annotated[str, "YouTube channel ID to search within"],
+    channel_id_or_handle: Annotated[str, "YouTube channel ID (UC...) or @handle"],
     query: Annotated[str, "Search query for transcript content"],
     page_token: Annotated[Optional[str], "Pagination token"] = None,
 ) -> dict:
@@ -247,12 +292,13 @@ async def search_in_channel(
 
     Uses the indexed transcripts to find relevant content matching the query.
     Results include URLs to the transcription files.
+    Accepts a YouTube channel ID or @handle.
     """
     params: dict[str, str] = {"q": query}
     if page_token:
         params["page_token"] = page_token
     return await _request(
-        context, "GET", f"/api/v1/interactive/channels/{channel_id}/search", params=params
+        context, "GET", f"/api/v1/interactive/channels/{channel_id_or_handle}/search", params=params
     )
 
 

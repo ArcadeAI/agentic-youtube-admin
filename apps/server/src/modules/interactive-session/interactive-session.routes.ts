@@ -13,69 +13,185 @@ const schedulerService = new SchedulerService(prisma);
 
 const DEFAULT_PAGE_SIZE = 20;
 
+/**
+ * Resolve a YouTube channel ID or handle to the YouTube channel ID.
+ * Accepts: "UC..." (returned as-is), "@handle", or "handle".
+ */
+async function resolveChannelId(
+	idOrHandle: string,
+	userId: string,
+): Promise<string> {
+	if (idOrHandle.startsWith("UC")) return idOrHandle;
+
+	const handle = idOrHandle.startsWith("@") ? idOrHandle : `@${idOrHandle}`;
+
+	const owned = await prisma.youTubeChannel.findFirst({
+		where: {
+			userId,
+			customUrl: { equals: handle, mode: "insensitive" },
+		},
+		select: { channelId: true },
+	});
+	if (owned) return owned.channelId;
+
+	const tracked = await prisma.trackedChannel.findFirst({
+		where: {
+			userId,
+			customUrl: { equals: handle, mode: "insensitive" },
+		},
+		select: { channelId: true },
+	});
+	if (tracked) return tracked.channelId;
+
+	throw new Error(`Channel not found for: ${idOrHandle}`);
+}
+
 export const interactiveSessionRoutes = new Elysia({
 	prefix: "/api/v1/interactive",
 })
-	// Notifications
+	// ── Overview & Config ────────────────────────────────────────────────────
+	.get("/overview", async ({ request }) => {
+		const auth = await authenticateInteractive(request);
+
+		const [ownedChannels, trackedChannels, scheduleCount, notificationCount] =
+			await Promise.all([
+				prisma.youTubeChannel.findMany({
+					where: { userId: auth.userId },
+					select: {
+						channelId: true,
+						channelTitle: true,
+						customUrl: true,
+						lastSyncAt: true,
+						backfillCompleted: true,
+					},
+					orderBy: { channelTitle: "asc" },
+				}),
+				prisma.trackedChannel.findMany({
+					where: { userId: auth.userId },
+					select: {
+						channelId: true,
+						channelTitle: true,
+						customUrl: true,
+						isActive: true,
+						lastPolledAt: true,
+					},
+					orderBy: { channelTitle: "asc" },
+				}),
+				prisma.scanSchedule.count({ where: { userId: auth.userId } }),
+				prisma.notificationConfig.count({ where: { userId: auth.userId } }),
+			]);
+
+		return {
+			ownedChannels,
+			trackedChannels,
+			counts: { schedules: scheduleCount, notifications: notificationCount },
+		};
+	})
+	.get("/owned", async ({ request }) => {
+		const auth = await authenticateInteractive(request);
+
+		const channels = await prisma.youTubeChannel.findMany({
+			where: { userId: auth.userId },
+			select: {
+				channelId: true,
+				channelTitle: true,
+				customUrl: true,
+				channelThumbnail: true,
+				lastSyncAt: true,
+				lastSyncStatus: true,
+				backfillCompleted: true,
+				backfillStartDate: true,
+			},
+			orderBy: { channelTitle: "asc" },
+		});
+
+		const channelIds = channels.map((c) => c.channelId);
+
+		const [schedules, notifications] = await Promise.all([
+			prisma.scanSchedule.findMany({
+				where: { userId: auth.userId, channelId: { in: channelIds } },
+				select: {
+					id: true,
+					scanType: true,
+					cronExpression: true,
+					isActive: true,
+					lastRunAt: true,
+					lastRunStatus: true,
+					channelId: true,
+				},
+				orderBy: { createdAt: "desc" },
+			}),
+			prisma.notificationConfig.findMany({
+				where: { userId: auth.userId, channelId: { in: channelIds } },
+				select: {
+					id: true,
+					name: true,
+					notificationType: true,
+					deliveryMethod: true,
+					isActive: true,
+					lastTriggeredAt: true,
+					channelId: true,
+				},
+				orderBy: { createdAt: "desc" },
+			}),
+		]);
+
+		return channels.map((ch) => ({
+			...ch,
+			schedules: schedules.filter((s) => s.channelId === ch.channelId),
+			notifications: notifications.filter((n) => n.channelId === ch.channelId),
+		}));
+	})
+	.get("/tracking", async ({ request }) => {
+		const auth = await authenticateInteractive(request);
+
+		const channels = await prisma.trackedChannel.findMany({
+			where: { userId: auth.userId },
+			select: {
+				channelId: true,
+				channelTitle: true,
+				customUrl: true,
+				channelThumbnail: true,
+				isActive: true,
+				lastPolledAt: true,
+				lastPollError: true,
+				notes: true,
+			},
+			orderBy: { channelTitle: "asc" },
+		});
+
+		const channelIds = channels.map((c) => c.channelId);
+
+		const schedules = await prisma.scanSchedule.findMany({
+			where: { userId: auth.userId, channelId: { in: channelIds } },
+			select: {
+				id: true,
+				scanType: true,
+				cronExpression: true,
+				isActive: true,
+				lastRunAt: true,
+				lastRunStatus: true,
+				channelId: true,
+			},
+			orderBy: { createdAt: "desc" },
+		});
+
+		return channels.map((ch) => ({
+			...ch,
+			schedules: schedules.filter((s) => s.channelId === ch.channelId),
+		}));
+	})
+	// ── Notifications ────────────────────────────────────────────────────────
 	.get(
 		"/notifications",
 		async ({ request, query }) => {
-			// ── DEBUG: raw request inspection ──
-			const hdrs: Record<string, string> = {};
-			request.headers.forEach((v, k) => {
-				hdrs[k] =
-					k.toLowerCase() === "authorization"
-						? `${v.slice(0, 20)}…(len=${v.length})`
-						: v;
-			});
-			console.log("[interactive] GET /notifications");
-			console.log(
-				"[interactive]   method=%s url=%s",
-				request.method,
-				request.url,
-			);
-			console.log("[interactive]   headers=%s", JSON.stringify(hdrs, null, 2));
-
-			const authHeader = request.headers.get("authorization");
-			console.log(
-				"[interactive]   authorization present=%s length=%d bearer_prefix=%s",
-				!!authHeader,
-				authHeader?.length ?? 0,
-				authHeader?.startsWith("Bearer ") ?? false,
-			);
-			const rawToken = authHeader?.replace("Bearer ", "") ?? "";
-			console.log(
-				"[interactive]   token length=%d first20=%s",
-				rawToken.length,
-				rawToken.slice(0, 20),
-			);
-			// ── END DEBUG ──
-
-			let auth: { userId: string };
-			try {
-				auth = await authenticateInteractive(request);
-			} catch (err) {
-				const errStr =
-					err instanceof Error ? (err.stack ?? err.message) : String(err);
-				console.error("[interactive]   auth FAILED:", errStr);
-				return new Response(JSON.stringify({ error: errStr }), {
-					status: 401,
-					headers: { "Content-Type": "application/json" },
-				});
-			}
-			console.log("[interactive]   auth OK userId=%s", auth.userId);
+			const auth = await authenticateInteractive(request);
 			const items = await notificationService.list(auth.userId);
-			console.log("[interactive]   fetched %d notifications", items.length);
 			const cursor = query.page_token
 				? decodePageToken(query.page_token)
 				: null;
 			const limit = cursor?.limit ?? DEFAULT_PAGE_SIZE;
-			const result = paginateResults(items, limit);
-			console.log(
-				"[interactive]   response: %s",
-				JSON.stringify(result).slice(0, 500),
-			);
-			return result;
+			return paginateResults(items, limit);
 		},
 		{
 			query: t.Object({
@@ -119,7 +235,7 @@ export const interactiveSessionRoutes = new Elysia({
 			params: t.Object({ id: t.String() }),
 		},
 	)
-	// Schedules
+	// ── Schedules ────────────────────────────────────────────────────────────
 	.get(
 		"/schedules",
 		async ({ request, query }) => {
@@ -172,13 +288,16 @@ export const interactiveSessionRoutes = new Elysia({
 			params: t.Object({ id: t.String() }),
 		},
 	)
-	// Reporting
+	// ── Reporting ────────────────────────────────────────────────────────────
 	.get(
 		"/channels/:channelId/analytics",
-		async ({ params, query }) => {
+		async ({ request, params, query }) => {
+			const auth = await authenticateInteractive(request);
+			const channelId = await resolveChannelId(params.channelId, auth.userId);
+
 			const stats = await prisma.channelDailyStats.findMany({
 				where: {
-					channelId: params.channelId,
+					channelId,
 					...(query.start_date && query.end_date
 						? {
 								date: {
