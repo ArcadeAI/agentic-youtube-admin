@@ -17,7 +17,7 @@ from googleapiclient.errors import HttpError
 from arcade_mcp_server import Context, MCPApp
 from arcade_mcp_server.auth import Google
 
-app = MCPApp(name="youtube_tools", version="1.0.0", log_level="DEBUG")
+app = MCPApp(name="youtube_tools", version="1.1.0", log_level="DEBUG")
 
 # YouTube OAuth2 configuration (owned channel tools)
 YOUTUBE_SCOPES = [
@@ -1375,6 +1375,39 @@ async def backfill_video_device_stats(
 # =============================================================================
 # PUBLIC / TRACKED CHANNEL TOOLS (API key)
 # =============================================================================
+
+
+@app.tool(requires_secrets=["YOUTUBE_API_KEY"])
+def get_public_channel_info(
+    context: Context,
+    channel_id: Annotated[str, "YouTube channel ID (UC...) or @handle"],
+) -> dict:
+    """Get public info and statistics for any YouTube channel.
+
+    Returns channel metadata (title, description, thumbnail, country),
+    subscriber count, total views, video count, and publish date.
+    Works with channel IDs or handles.
+    """
+    api_key = context.get_secret("YOUTUBE_API_KEY")
+    youtube = _build_youtube_service_with_key(api_key)
+
+    channel = _resolve_channel(youtube, channel_id, parts="snippet,statistics")
+    snippet = channel.get("snippet", {})
+    stats = channel.get("statistics", {})
+
+    return {
+        "channelId": channel["id"],
+        "title": snippet.get("title", ""),
+        "description": snippet.get("description"),
+        "thumbnail": (snippet.get("thumbnails") or {}).get("default", {}).get("url"),
+        "customUrl": snippet.get("customUrl"),
+        "country": snippet.get("country"),
+        "subscriberCount": int(stats["subscriberCount"]) if stats.get("subscriberCount") else None,
+        "subscriberCountHidden": stats.get("hiddenSubscriberCount", False),
+        "viewCount": int(stats.get("viewCount", 0)),
+        "videoCount": int(stats.get("videoCount", 0)),
+        "publishedAt": snippet.get("publishedAt"),
+    }
 
 
 @app.tool(requires_secrets=["YOUTUBE_API_KEY"])
