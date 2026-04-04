@@ -1,7 +1,12 @@
+import { createHash } from "node:crypto";
 import prisma from "@agentic-youtube-admin/db";
 
 export interface InteractiveAuthResult {
 	userId: string;
+}
+
+function hashToken(raw: string): string {
+	return createHash("sha256").update(raw).digest("base64url");
 }
 
 export async function authenticateInteractive(
@@ -15,7 +20,7 @@ export async function authenticateInteractive(
 	}
 
 	const accessToken = await prisma.oauthAccessToken.findUnique({
-		where: { token },
+		where: { token: hashToken(token) },
 		select: { userId: true, expiresAt: true, scopes: true },
 	});
 
