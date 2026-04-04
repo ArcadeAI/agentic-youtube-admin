@@ -20,6 +20,11 @@ import {
 import { TrackingService, trackingRoutes } from "./modules/tracking";
 import { createYouTubeRoutes, YouTubeService } from "./modules/youtube";
 
+// Enable JSON serialization of BigInt values returned by Prisma
+(BigInt.prototype as unknown as { toJSON: () => number }).toJSON = function () {
+	return Number(this);
+};
+
 // Initialize services
 const youtubeService = new YouTubeService(prisma);
 const trackingService = new TrackingService(prisma);
