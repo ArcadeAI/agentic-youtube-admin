@@ -16,7 +16,7 @@ import httpx
 from arcade_mcp_server import Context, MCPApp
 from arcade_mcp_server.auth import OAuth2
 
-app = MCPApp(name="arcade_interactive_session", version="1.6.0", log_level="DEBUG")
+app = MCPApp(name="arcade_interactive_session", version="1.8.0", log_level="DEBUG")
 
 # The provider_id must match the OAuth2 provider configured in the user's Arcade account
 YT_ADMIN_AUTH = OAuth2(
@@ -347,6 +347,29 @@ async def delete_schedule(
     requires_auth=YT_ADMIN_AUTH,
     requires_secrets=["ELYSIA_BASE_URL"],
 )
+async def get_data_coverage(
+    context: Context,
+    channel_id_or_handle: Annotated[str, "YouTube channel ID (UC...) or @handle"],
+) -> dict:
+    """Check what data has been collected for a channel.
+
+    Use this after a backfill or tracked poll to verify data was actually stored.
+    Returns date coverage (earliest/latest date, total days collected vs expected,
+    up to 30 missing dates as gaps), the most recent entry with its values,
+    and video-level stats (total videos, how many have daily data, total rows).
+
+    Works for both owned channels (ChannelDailyStats + VideoDailyStats) and
+    tracked channels (TrackedChannelSnapshot + TrackedVideoSnapshot).
+    """
+    return await _request(
+        context, "GET", f"/api/v1/interactive/channels/{channel_id_or_handle}/data-coverage"
+    )
+
+
+@app.tool(
+    requires_auth=YT_ADMIN_AUTH,
+    requires_secrets=["ELYSIA_BASE_URL"],
+)
 async def get_channel_analytics(
     context: Context,
     channel_id_or_handle: Annotated[str, "YouTube channel ID (UC...) or @handle"],
@@ -354,11 +377,23 @@ async def get_channel_analytics(
     end_date: Annotated[Optional[str], "End date in YYYY-MM-DD format"] = None,
     page_token: Annotated[Optional[str], "Pagination token"] = None,
 ) -> dict:
-    """Get channel analytics from the system's database.
+    """Get daily channel metrics from the database (up to 20 rows, newest first).
 
-    Returns daily channel-level metrics for the specified date range.
-    This retrieves data already stored in the system, not from the YouTube API directly.
-    Accepts a YouTube channel ID or @handle.
+    For OWNED channels, each row is a ChannelDailyStats entry with these fields:
+    - date: the calendar day
+    - totalViews: cumulative all-time channel views (snapshot, NOT daily)
+    - viewsGained: views earned on THIS specific day (the daily delta)
+    - subscriberCount: total subscribers on this date (may be 0/null if YouTube
+      did not report it — this is common for older backfill dates)
+    - subscribersGained / subscribersLost: daily subscriber changes
+    - estimatedMinutesWatched: total watch time in minutes for this day
+    - averageViewDuration: average view duration in SECONDS for this day
+    - totalVideos: number of videos on the channel on this date
+
+    For TRACKED channels, each row is a TrackedChannelSnapshot with:
+    - date, subscriberCount, totalViews, videoCount, subscriberCountHidden
+
+    Use get_data_coverage first to see date ranges and gaps before drilling in.
     """
     params = {}
     if start_date:

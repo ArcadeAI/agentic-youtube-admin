@@ -15,6 +15,46 @@ const schedulerService = new SchedulerService(prisma);
 const DEFAULT_PAGE_SIZE = 20;
 
 /**
+ * Compute date coverage info from a sorted array of Date objects.
+ * Returns earliest/latest dates, counts, and up to 30 missing dates.
+ */
+function computeDateCoverage(dates: Date[]) {
+	const empty = {
+		earliestDate: null as string | null,
+		latestDate: null as string | null,
+		totalDays: 0,
+		expectedDays: 0,
+		missingDates: [] as string[],
+	};
+	if (dates.length === 0) return empty;
+
+	const earliest = dates[0]!;
+	const latest = dates[dates.length - 1]!;
+	const msPerDay = 24 * 60 * 60 * 1000;
+	const expectedDays =
+		Math.round((latest.getTime() - earliest.getTime()) / msPerDay) + 1;
+
+	const dateSet = new Set(dates.map((d) => d.toISOString().slice(0, 10)));
+	const missingDates: string[] = [];
+	const cursor = new Date(earliest);
+	while (cursor <= latest && missingDates.length < 30) {
+		const key = cursor.toISOString().slice(0, 10);
+		if (!dateSet.has(key)) {
+			missingDates.push(key);
+		}
+		cursor.setDate(cursor.getDate() + 1);
+	}
+
+	return {
+		earliestDate: earliest.toISOString().slice(0, 10),
+		latestDate: latest.toISOString().slice(0, 10),
+		totalDays: dates.length,
+		expectedDays,
+		missingDates,
+	};
+}
+
+/**
  * Resolve a YouTube channel ID or handle to the YouTube channel ID.
  * Accepts: "UC..." (returned as-is), "@handle", or "handle".
  */
@@ -421,6 +461,198 @@ export function createInteractiveSessionRoutes(scannerService: ScannerService) {
 				},
 			)
 			// ── Reporting ────────────────────────────────────────────────────────
+			.get(
+				"/channels/:channelId/data-coverage",
+				async ({ request, params }) => {
+					const auth = await authenticateInteractive(request);
+					const ytChannelId = await resolveChannelId(
+						params.channelId,
+						auth.userId,
+					);
+
+					// Try owned channel first
+					const ownedChannel = await prisma.youTubeChannel.findFirst({
+						where: { channelId: ytChannelId, userId: auth.userId },
+						select: {
+							id: true,
+							channelTitle: true,
+							customUrl: true,
+							channelId: true,
+						},
+					});
+
+					if (ownedChannel) {
+						const channelStatDates = await prisma.channelDailyStats.findMany({
+							where: { channelId: ownedChannel.id },
+							select: { date: true },
+							orderBy: { date: "asc" },
+						});
+
+						const latestEntry = await prisma.channelDailyStats.findFirst({
+							where: { channelId: ownedChannel.id },
+							orderBy: { date: "desc" },
+						});
+
+						const videoIds = await prisma.video.findMany({
+							where: { channelId: ownedChannel.id },
+							select: { id: true },
+						});
+						const ids = videoIds.map((v) => v.id);
+
+						const videosWithStats =
+							ids.length > 0
+								? await prisma.videoDailyStats
+										.findMany({
+											where: { videoId: { in: ids } },
+											distinct: ["videoId"],
+											select: { videoId: true },
+										})
+										.then((r) => r.length)
+								: 0;
+
+						const videoDateAgg =
+							ids.length > 0
+								? await prisma.videoDailyStats.aggregate({
+										where: { videoId: { in: ids } },
+										_min: { date: true },
+										_max: { date: true },
+										_count: true,
+									})
+								: null;
+
+						const coverage = computeDateCoverage(
+							channelStatDates.map((s) => s.date),
+						);
+
+						return {
+							channelType: "owned",
+							channelId: ytChannelId,
+							channelTitle: ownedChannel.channelTitle,
+							handle: ownedChannel.customUrl,
+							channelDailyStats: {
+								...coverage,
+								latestEntry: latestEntry
+									? {
+											date: latestEntry.date,
+											viewsGained: latestEntry.viewsGained,
+											totalViews: latestEntry.totalViews,
+											subscriberCount: latestEntry.subscriberCount,
+											subscribersGained: latestEntry.subscribersGained,
+											subscribersLost: latestEntry.subscribersLost,
+											estimatedMinutesWatched:
+												latestEntry.estimatedMinutesWatched,
+											averageViewDuration: latestEntry.averageViewDuration,
+											totalVideos: latestEntry.totalVideos,
+										}
+									: null,
+							},
+							videoDailyStats: {
+								totalVideos: videoIds.length,
+								videosWithDailyStats: videosWithStats,
+								totalRows: videoDateAgg?._count ?? 0,
+								earliestDate:
+									videoDateAgg?._min?.date?.toISOString().slice(0, 10) ?? null,
+								latestDate:
+									videoDateAgg?._max?.date?.toISOString().slice(0, 10) ?? null,
+							},
+						};
+					}
+
+					// Try tracked channel
+					const trackedChannel = await prisma.trackedChannel.findFirst({
+						where: {
+							channelId: ytChannelId,
+							userId: auth.userId,
+						},
+						select: {
+							id: true,
+							channelTitle: true,
+							customUrl: true,
+							channelId: true,
+						},
+					});
+
+					if (trackedChannel) {
+						const snapshotDates = await prisma.trackedChannelSnapshot.findMany({
+							where: { channelId: trackedChannel.id },
+							select: { date: true },
+							orderBy: { date: "asc" },
+						});
+
+						const latestSnapshot =
+							await prisma.trackedChannelSnapshot.findFirst({
+								where: { channelId: trackedChannel.id },
+								orderBy: { date: "desc" },
+							});
+
+						const trackedVideoIds = await prisma.trackedVideo.findMany({
+							where: { channelId: trackedChannel.id },
+							select: { id: true },
+						});
+						const tvIds = trackedVideoIds.map((v) => v.id);
+
+						const videosWithSnapshots =
+							tvIds.length > 0
+								? await prisma.trackedVideoSnapshot
+										.findMany({
+											where: { videoId: { in: tvIds } },
+											distinct: ["videoId"],
+											select: { videoId: true },
+										})
+										.then((r) => r.length)
+								: 0;
+
+						const videoSnapAgg =
+							tvIds.length > 0
+								? await prisma.trackedVideoSnapshot.aggregate({
+										where: { videoId: { in: tvIds } },
+										_min: { date: true },
+										_max: { date: true },
+										_count: true,
+									})
+								: null;
+
+						const coverage = computeDateCoverage(
+							snapshotDates.map((s) => s.date),
+						);
+
+						return {
+							channelType: "tracked",
+							channelId: ytChannelId,
+							channelTitle: trackedChannel.channelTitle,
+							handle: trackedChannel.customUrl,
+							channelSnapshots: {
+								...coverage,
+								latestEntry: latestSnapshot
+									? {
+											date: latestSnapshot.date,
+											subscriberCount: latestSnapshot.subscriberCount,
+											totalViews: latestSnapshot.totalViews,
+											videoCount: latestSnapshot.videoCount,
+											subscriberCountHidden:
+												latestSnapshot.subscriberCountHidden,
+										}
+									: null,
+							},
+							videoSnapshots: {
+								totalTrackedVideos: trackedVideoIds.length,
+								videosWithSnapshots,
+								totalRows: videoSnapAgg?._count ?? 0,
+								earliestDate:
+									videoSnapAgg?._min?.date?.toISOString().slice(0, 10) ?? null,
+								latestDate:
+									videoSnapAgg?._max?.date?.toISOString().slice(0, 10) ?? null,
+							},
+						};
+					}
+
+					return new Response(JSON.stringify({ error: "Channel not found" }), {
+						status: 404,
+						headers: { "Content-Type": "application/json" },
+					});
+				},
+				{ params: t.Object({ channelId: t.String() }) },
+			)
 			.get(
 				"/channels/:channelId/analytics",
 				async ({ request, params, query }) => {
