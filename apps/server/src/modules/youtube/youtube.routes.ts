@@ -180,31 +180,52 @@ export function createYouTubeRoutes(service: YouTubeService) {
 						.slice(0, 10);
 				const endDate = body.endDate ?? new Date().toISOString().slice(0, 10);
 
-				const videoResult = await service.discoverAndSyncVideos(
-					body.userId,
-					body.arcadeUserId,
-					channel.id,
-				);
+				const errors: Array<{ step: string; message: string }> = [];
 
-				const analyticsResult = await service.syncChannelAnalytics(
-					body.userId,
-					body.arcadeUserId,
-					channel.id,
-					startDate,
-					endDate,
-				);
-
-				const ytVideoIds = await service.getVideoIdsForChannel(channel.id);
-
-				let videoAnalyticsResult = null;
-				if (ytVideoIds.length > 0) {
-					videoAnalyticsResult = await service.backfillVideoAnalytics(
+				let videoResult = null;
+				try {
+					videoResult = await service.discoverAndSyncVideos(
 						body.userId,
 						body.arcadeUserId,
-						ytVideoIds,
+						channel.id,
+					);
+				} catch (err) {
+					const msg = err instanceof Error ? err.message : String(err);
+					console.error("[sync] discoverAndSyncVideos failed:", msg);
+					errors.push({ step: "discoverVideos", message: msg });
+				}
+
+				let analyticsResult = null;
+				try {
+					analyticsResult = await service.syncChannelAnalytics(
+						body.userId,
+						body.arcadeUserId,
+						channel.id,
 						startDate,
 						endDate,
 					);
+				} catch (err) {
+					const msg = err instanceof Error ? err.message : String(err);
+					console.error("[sync] syncChannelAnalytics failed:", msg);
+					errors.push({ step: "channelAnalytics", message: msg });
+				}
+
+				let videoAnalyticsResult = null;
+				try {
+					const ytVideoIds = await service.getVideoIdsForChannel(channel.id);
+					if (ytVideoIds.length > 0) {
+						videoAnalyticsResult = await service.backfillVideoAnalytics(
+							body.userId,
+							body.arcadeUserId,
+							ytVideoIds,
+							startDate,
+							endDate,
+						);
+					}
+				} catch (err) {
+					const msg = err instanceof Error ? err.message : String(err);
+					console.error("[sync] backfillVideoAnalytics failed:", msg);
+					errors.push({ step: "videoAnalytics", message: msg });
 				}
 
 				await service.markSyncComplete(channel.id);
@@ -213,6 +234,7 @@ export function createYouTubeRoutes(service: YouTubeService) {
 					videos: videoResult,
 					channelAnalytics: analyticsResult,
 					videoAnalytics: videoAnalyticsResult,
+					errors: errors.length > 0 ? errors : undefined,
 				};
 			},
 			{

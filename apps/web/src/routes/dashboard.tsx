@@ -143,11 +143,24 @@ function DashboardPage() {
 	const handleSync = async (channel: Channel) => {
 		setSyncingId(channel.id);
 		try {
-			await api.api.youtube.channels({ channelId: channel.id }).sync.post({
-				userId,
-				arcadeUserId: userEmail,
-			});
-			toast.success(`Synced "${channel.channelTitle}"`);
+			const { data } = await api.api.youtube
+				.channels({ channelId: channel.id })
+				.sync.post({
+					userId,
+					arcadeUserId: userEmail,
+				});
+			const result = data as {
+				errors?: Array<{ step: string; message: string }>;
+			} | null;
+			if (result?.errors && result.errors.length > 0) {
+				const steps = result.errors.map((e) => e.step).join(", ");
+				toast.error(`Sync partially failed (${steps})`, {
+					description: result.errors[0].message,
+					duration: 8000,
+				});
+			} else {
+				toast.success(`Synced "${channel.channelTitle}"`);
+			}
 			await fetchChannels();
 		} catch {
 			toast.error(`Failed to sync "${channel.channelTitle}"`);
