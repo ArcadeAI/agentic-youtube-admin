@@ -130,21 +130,18 @@ export function createSlackAuthRoutes() {
 			const result = await callTool(
 				SLACK_TOOL_NAMES.LIST_CONVERSATIONS,
 				arcadeUserId,
-				{
-					conversation_types: "public_channel,private_channel",
-					limit: 200,
-				},
+				{},
 				slackListConversationsResponseSchema,
 			);
 
 			if (!result.ok) {
-				return new Response(
-					`Failed to list Slack channels: ${result.error.message}`,
-					{ status: 500 },
-				);
+				console.error("Slack ListConversations failed:", result.error);
+				return { channels: [], error: result.error.message };
 			}
 
-			const channels = result.data.channels
+			const data = result.data;
+			const raw = Array.isArray(data) ? data : data.channels;
+			const channels = raw
 				.filter((c) => !c.is_archived)
 				.map((c) => ({
 					id: c.id,

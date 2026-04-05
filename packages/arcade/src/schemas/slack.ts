@@ -32,10 +32,13 @@ const slackConversationItemSchema = z.object({
 
 export type SlackConversationItem = z.infer<typeof slackConversationItemSchema>;
 
-export const slackListConversationsResponseSchema = z.object({
-	channels: z.array(slackConversationItemSchema),
-	next_cursor: z.string().optional(),
-});
+export const slackListConversationsResponseSchema = z.union([
+	z.object({
+		channels: z.array(slackConversationItemSchema),
+		next_cursor: z.string().optional(),
+	}),
+	z.array(slackConversationItemSchema),
+]);
 
 export type SlackListConversationsResponse = z.infer<
 	typeof slackListConversationsResponseSchema
