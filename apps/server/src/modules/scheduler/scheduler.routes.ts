@@ -35,6 +35,7 @@ export function createSchedulerRoutes(service: SchedulerService) {
 					channelId: body.channelId,
 					cronExpression: body.cronExpression,
 					config: body.config,
+					notificationConfigId: body.notificationConfigId,
 				});
 			},
 			{
@@ -44,6 +45,7 @@ export function createSchedulerRoutes(service: SchedulerService) {
 					channelId: t.Optional(t.String()),
 					cronExpression: t.String(),
 					config: t.Optional(t.Record(t.String(), t.Unknown())),
+					notificationConfigId: t.Optional(t.String()),
 				}),
 			},
 		)
@@ -54,6 +56,7 @@ export function createSchedulerRoutes(service: SchedulerService) {
 					cronExpression: body.cronExpression,
 					isActive: body.isActive,
 					config: body.config,
+					notificationConfigId: body.notificationConfigId,
 				});
 				if (!updated) return new Response("Not found", { status: 404 });
 				return updated;
@@ -65,6 +68,7 @@ export function createSchedulerRoutes(service: SchedulerService) {
 					cronExpression: t.Optional(t.String()),
 					isActive: t.Optional(t.Boolean()),
 					config: t.Optional(t.Record(t.String(), t.Unknown())),
+					notificationConfigId: t.Optional(t.Nullable(t.String())),
 				}),
 			},
 		)

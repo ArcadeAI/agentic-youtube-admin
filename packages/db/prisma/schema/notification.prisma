@@ -13,6 +13,8 @@ model NotificationConfig {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
+  scanSchedules   ScanSchedule[]
+
   @@index([userId])
   @@index([notificationType])
   @@map("notification_config")

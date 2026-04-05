@@ -35,6 +35,7 @@ export class SchedulerService {
 				channelId: input.channelId ?? null,
 				cronExpression: input.cronExpression,
 				config: jsonOrDbNull(input.config),
+				notificationConfigId: input.notificationConfigId ?? null,
 			},
 		});
 	}
@@ -52,6 +53,9 @@ export class SchedulerService {
 				isActive: input.isActive ?? schedule.isActive,
 				...(input.config !== undefined
 					? { config: jsonOrDbNull(input.config) }
+					: {}),
+				...(input.notificationConfigId !== undefined
+					? { notificationConfigId: input.notificationConfigId }
 					: {}),
 			},
 		});

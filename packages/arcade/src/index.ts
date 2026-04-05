@@ -10,4 +10,4 @@ export {
 	ToolExecutionError,
 	ToolValidationError,
 } from "./errors";
-export { TOOL_NAMES } from "./tool-names";
+export { SLACK_TOOL_NAMES, TOOL_NAMES } from "./tool-names";

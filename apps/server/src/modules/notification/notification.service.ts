@@ -90,4 +90,15 @@ export class NotificationService {
 			data: { lastTriggeredAt: new Date() },
 		});
 	}
+
+	async getForSchedule(scheduleId: string) {
+		const schedule = await this.prisma.scanSchedule.findUnique({
+			where: { id: scheduleId },
+			select: { notificationConfigId: true },
+		});
+		if (!schedule?.notificationConfigId) return null;
+		return this.prisma.notificationConfig.findFirst({
+			where: { id: schedule.notificationConfigId, isActive: true },
+		});
+	}
 }

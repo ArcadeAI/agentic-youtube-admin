@@ -14,11 +14,20 @@ import { Skeleton } from "@agentic-youtube-admin/ui/components/skeleton";
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { z } from "zod";
 
+import { api } from "@/lib/api";
 import { authClient } from "@/lib/auth-client";
+
+const SLACK_PENDING_AUTH_KEY = "slack_pending_auth_id";
+
+const searchSchema = z.object({
+	slack: z.enum(["connected", "error"]).optional(),
+});
 
 export const Route = createFileRoute("/settings")({
 	component: SettingsPage,
+	validateSearch: searchSchema,
 	beforeLoad: async () => {
 		const session = await authClient.getSession();
 		if (!session.data) {
@@ -38,6 +47,7 @@ interface OAuthClient {
 const AUTH_BASE = `${env.VITE_SERVER_URL}/api/auth`;
 
 function SettingsPage() {
+	const { slack } = Route.useSearch();
 	const [clients, setClients] = useState<OAuthClient[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [creating, setCreating] = useState(false);
@@ -50,6 +60,16 @@ function SettingsPage() {
 	const [newClientSecret, setNewClientSecret] = useState<{
 		clientId: string;
 		clientSecret: string;
+	} | null>(null);
+
+	// Slack state
+	const [slackConnected, setSlackConnected] = useState(false);
+	const [slackLoading, setSlackLoading] = useState(true);
+	const [slackConnecting, setSlackConnecting] = useState(false);
+	const [slackUser, setSlackUser] = useState<{
+		name?: string;
+		username?: string;
+		team_name?: string;
 	} | null>(null);
 
 	const fetchClients = useCallback(async () => {
@@ -71,9 +91,64 @@ function SettingsPage() {
 		}
 	}, []);
 
+	const fetchSlackStatus = useCallback(async () => {
+		try {
+			const { data } = await api.api.slack.status.get();
+			if (data && typeof data === "object" && "connected" in data) {
+				setSlackConnected(data.connected as boolean);
+			}
+		} catch {
+			// Slack status check failed — not critical
+		} finally {
+			setSlackLoading(false);
+		}
+	}, []);
+
+	// Complete Slack connection after OAuth redirect
+	useEffect(() => {
+		if (slack !== "connected") return;
+
+		const authId = sessionStorage.getItem(SLACK_PENDING_AUTH_KEY);
+		if (!authId) {
+			toast.success("Slack connected");
+			setSlackConnected(true);
+			setSlackLoading(false);
+			return;
+		}
+
+		sessionStorage.removeItem(SLACK_PENDING_AUTH_KEY);
+		setSlackConnecting(true);
+
+		(async () => {
+			try {
+				const { data } = await api.api.slack["complete-connection"].post({
+					authId,
+				});
+				if (data && typeof data === "object" && "user" in data) {
+					const user = data.user as Record<string, string>;
+					setSlackUser({
+						name: user.name,
+						username: user.username,
+						team_name: user.team_name,
+					});
+				}
+				setSlackConnected(true);
+				toast.success("Slack connected successfully");
+			} catch {
+				toast.error("Failed to complete Slack connection");
+			} finally {
+				setSlackConnecting(false);
+				setSlackLoading(false);
+			}
+		})();
+	}, [slack]);
+
 	useEffect(() => {
 		fetchClients();
-	}, [fetchClients]);
+		if (slack !== "connected") {
+			fetchSlackStatus();
+		}
+	}, [fetchClients, fetchSlackStatus, slack]);
 
 	const handleCreate = async (e: React.FormEvent) => {
 		e.preventDefault();
@@ -115,9 +190,73 @@ function SettingsPage() {
 		}
 	};
 
+	const handleConnectSlack = async () => {
+		setSlackConnecting(true);
+		try {
+			const { data } = await api.api.slack.connect.post();
+			if (!data || typeof data !== "object") {
+				toast.error("Unexpected response from server");
+				return;
+			}
+
+			if ("connected" in data && data.connected) {
+				setSlackConnected(true);
+				toast.success("Slack is already connected");
+				return;
+			}
+
+			if ("needsAuth" in data && data.needsAuth) {
+				const d = data as { authUrl: string; authId: string };
+				sessionStorage.setItem(SLACK_PENDING_AUTH_KEY, d.authId);
+				window.location.href = d.authUrl;
+				return;
+			}
+		} catch {
+			toast.error("Failed to initiate Slack connection");
+		} finally {
+			setSlackConnecting(false);
+		}
+	};
+
 	return (
 		<div className="container mx-auto max-w-3xl px-4 py-6">
 			<h1 className="mb-6 font-bold text-xl">Settings</h1>
+
+			{/* Slack Integration */}
+			<Card className="mb-6">
+				<CardHeader>
+					<CardTitle>Slack Integration</CardTitle>
+					<CardDescription>
+						Connect your Slack workspace to receive scan notifications.
+					</CardDescription>
+				</CardHeader>
+				<CardContent>
+					{slackLoading ? (
+						<Skeleton className="h-5 w-48" />
+					) : slackConnected ? (
+						<div className="text-sm">
+							<span className="mr-2 font-medium text-green-600">Connected</span>
+							{slackUser && (
+								<span className="text-muted-foreground">
+									as {slackUser.name ?? slackUser.username}
+									{slackUser.team_name && ` (${slackUser.team_name})`}
+								</span>
+							)}
+						</div>
+					) : (
+						<p className="text-muted-foreground text-sm">
+							Not connected. Connect Slack to enable notifications.
+						</p>
+					)}
+				</CardContent>
+				{!slackLoading && !slackConnected && (
+					<CardFooter>
+						<Button onClick={handleConnectSlack} disabled={slackConnecting}>
+							{slackConnecting ? "Connecting..." : "Connect Slack"}
+						</Button>
+					</CardFooter>
+				)}
+			</Card>
 
 			{/* Arcade configuration reference */}
 			<Card className="mb-6">

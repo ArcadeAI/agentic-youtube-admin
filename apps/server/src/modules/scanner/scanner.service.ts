@@ -1,5 +1,13 @@
 import type { PrismaClient } from "@agentic-youtube-admin/db";
 import type { Mastra } from "@mastra/core";
+import type { NotificationService } from "../notification/notification.service";
+import type { SlackDeliveryService } from "../notification/slack-delivery.service";
+import {
+	formatBackfillComplete,
+	formatDailySyncComplete,
+	formatScanError,
+	formatTrackedPollComplete,
+} from "../notification/slack-message.formatter";
 import type { SchedulerService } from "../scheduler/scheduler.service";
 
 /** In-memory map of scan-run ID → Mastra Run for cancellation support. */
@@ -14,6 +22,8 @@ export class ScannerService {
 	constructor(
 		private prisma: PrismaClient,
 		private schedulerService: SchedulerService,
+		private notificationService?: NotificationService,
+		private slackDeliveryService?: SlackDeliveryService,
 	) {}
 
 	setMastra(mastra: Mastra) {
@@ -81,6 +91,13 @@ export class ScannerService {
 				result,
 			);
 			await this.schedulerService.updateScheduleLastRun(scheduleId, "success");
+			await this.dispatchNotification(
+				scheduleId,
+				scanType,
+				channelId,
+				userId,
+				result,
+			);
 		} catch (err) {
 			const errorMsg = err instanceof Error ? err.message : String(err);
 			await this.schedulerService.completeScanRun(
@@ -92,6 +109,14 @@ export class ScannerService {
 			await this.schedulerService.updateScheduleLastRun(
 				scheduleId,
 				"error",
+				errorMsg,
+			);
+			await this.dispatchNotification(
+				scheduleId,
+				scanType,
+				channelId,
+				userId,
+				undefined,
 				errorMsg,
 			);
 		}
@@ -271,6 +296,107 @@ export class ScannerService {
 
 	async listActiveProcesses(userId: string) {
 		return this.schedulerService.listActiveRunsForUser(userId);
+	}
+
+	// ── Notification dispatch ────────────────────────────────────────────────
+
+	private async dispatchNotification(
+		scheduleId: string,
+		scanType: string,
+		channelId: string | null,
+		userId: string,
+		result?: unknown,
+		error?: string,
+	): Promise<void> {
+		if (!this.notificationService || !this.slackDeliveryService) return;
+
+		try {
+			const config = await this.notificationService.getForSchedule(scheduleId);
+			if (!config || config.deliveryMethod !== "slack") return;
+
+			const deliveryConfig = (config.deliveryConfig ?? {}) as {
+				channelName?: string;
+				dmToSelf?: boolean;
+			};
+
+			const channelTitle = await this.resolveChannelTitle(channelId);
+
+			let message: string;
+			if (error) {
+				message = formatScanError(scanType, error, channelTitle);
+			} else {
+				message = this.formatSuccessMessage(scanType, result, channelTitle);
+			}
+
+			const sendResult = await this.slackDeliveryService.send(
+				userId,
+				deliveryConfig,
+				message,
+			);
+
+			if (sendResult.ok) {
+				await this.notificationService.markTriggered(config.id);
+			} else {
+				console.error(
+					`Slack notification failed for schedule ${scheduleId}:`,
+					sendResult.error,
+				);
+			}
+		} catch (err) {
+			console.error("Notification dispatch error:", err);
+		}
+	}
+
+	private formatSuccessMessage(
+		scanType: string,
+		result: unknown,
+		channelTitle?: string,
+	): string {
+		switch (scanType) {
+			case "owned_backfill":
+				return formatBackfillComplete(
+					result as {
+						completed: boolean;
+						retentionPointsTotal: number;
+						liveTimelinePointsTotal: number;
+					},
+					channelTitle,
+				);
+			case "owned_daily_sync":
+				return formatDailySyncComplete(
+					result as { completed: boolean; totalUpserted: number },
+					channelTitle,
+				);
+			case "tracked_daily_poll":
+				return formatTrackedPollComplete(
+					result as {
+						channelsPolled: number;
+						channelsScored: number;
+						channelsFailed: number;
+						errors: string[];
+					},
+				);
+			default:
+				return `*Scan Complete: ${scanType.replace(/_/g, " ")}*`;
+		}
+	}
+
+	private async resolveChannelTitle(
+		channelId: string | null,
+	): Promise<string | undefined> {
+		if (!channelId) return undefined;
+
+		const owned = await this.prisma.youTubeChannel.findFirst({
+			where: { id: channelId },
+			select: { channelTitle: true },
+		});
+		if (owned) return owned.channelTitle;
+
+		const tracked = await this.prisma.trackedChannel.findFirst({
+			where: { id: channelId },
+			select: { channelTitle: true },
+		});
+		return tracked?.channelTitle ?? undefined;
 	}
 
 	// ── Helpers ──────────────────────────────────────────────────────────────

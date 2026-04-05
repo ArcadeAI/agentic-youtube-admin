@@ -10,3 +10,5 @@ export {
 	deliveryMethods,
 	notificationTypes,
 } from "./notification.types";
+export { createSlackAuthRoutes } from "./slack-auth.routes";
+export { SlackDeliveryService } from "./slack-delivery.service";

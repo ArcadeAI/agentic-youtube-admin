@@ -7,5 +7,6 @@ export * from "./live-stream";
 export * from "./public-channel";
 export * from "./retention";
 export * from "./score-channel";
+export * from "./slack";
 export * from "./traffic-sources";
 export * from "./video-analytics";

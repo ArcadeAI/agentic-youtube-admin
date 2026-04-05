@@ -9,7 +9,9 @@ import { createInteractiveSessionRoutes } from "./modules/interactive-session";
 import { createLibraryRoutes, LibraryService } from "./modules/library";
 import {
 	createNotificationRoutes,
+	createSlackAuthRoutes,
 	NotificationService,
+	SlackDeliveryService,
 } from "./modules/notification";
 import { createScannerRoutes, ScannerService } from "./modules/scanner";
 import {
@@ -30,7 +32,13 @@ const youtubeService = new YouTubeService(prisma);
 const trackingService = new TrackingService(prisma);
 const schedulerService = new SchedulerService(prisma);
 const notificationService = new NotificationService(prisma);
-const scannerService = new ScannerService(prisma, schedulerService);
+const slackDeliveryService = new SlackDeliveryService(prisma);
+const scannerService = new ScannerService(
+	prisma,
+	schedulerService,
+	notificationService,
+	slackDeliveryService,
+);
 const libraryService = new LibraryService();
 
 // Initialize Mastra workflows and connect to scanner
@@ -69,6 +77,7 @@ const app = new Elysia()
 	})
 	// Module routes
 	.use(arcadeAuthRoutes)
+	.use(createSlackAuthRoutes())
 	.use(createYouTubeRoutes(youtubeService))
 	.use(trackingRoutes)
 	.use(createSchedulerRoutes(schedulerService))

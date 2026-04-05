@@ -35,3 +35,9 @@ export const TOOL_NAMES = {
 	GET_PUBLIC_VIDEO_STATS: t("GetPublicVideoStats"),
 	GET_PUBLIC_VIDEO_TRANSCRIPTION: t("GetPublicVideoTranscription"),
 } as const;
+
+export const SLACK_TOOL_NAMES = {
+	WHO_AM_I: "Slack.WhoAmI",
+	SEND_MESSAGE: "Slack.SendMessage",
+	LIST_CONVERSATIONS: "Slack.ListConversations",
+} as const;
