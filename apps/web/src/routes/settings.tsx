@@ -16,8 +16,21 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
+import {
+	SlackChannelPicker,
+	type SlackDestination,
+} from "@/components/slack-channel-picker";
 import { api } from "@/lib/api";
 import { authClient } from "@/lib/auth-client";
+
+const NOTIFICATION_TYPES = [
+	{ value: "new_video", label: "New video published" },
+	{ value: "milestone_views", label: "Milestone views reached" },
+	{ value: "engagement_drop", label: "Engagement drop" },
+	{ value: "engagement_spike", label: "Engagement spike" },
+	{ value: "subscriber_change", label: "Subscriber change" },
+	{ value: "custom", label: "Custom" },
+] as const;
 
 const SLACK_PENDING_AUTH_KEY = "slack_pending_auth_id";
 
@@ -71,6 +84,23 @@ function SettingsPage() {
 		username?: string;
 		team_name?: string;
 	} | null>(null);
+
+	// Notification config state
+	const [notifName, setNotifName] = useState("");
+	const [notifType, setNotifType] = useState<string>("new_video");
+	const [notifDest, setNotifDest] = useState<SlackDestination | null>(null);
+	const [creatingNotif, setCreatingNotif] = useState(false);
+	const [notifications, setNotifications] = useState<
+		Array<{
+			id: string;
+			name: string;
+			notificationType: string;
+			deliveryMethod: string;
+			deliveryConfig: Record<string, unknown> | null;
+			isActive: boolean;
+		}>
+	>([]);
+	const [notifsLoading, setNotifsLoading] = useState(true);
 
 	const fetchClients = useCallback(async () => {
 		try {
@@ -143,12 +173,41 @@ function SettingsPage() {
 		})();
 	}, [slack]);
 
+	const { session } = Route.useRouteContext();
+	const userId = session.data?.user.id ?? "";
+
+	const fetchNotifications = useCallback(async () => {
+		if (!userId) return;
+		try {
+			const { data } = await api.api.notifications.get({
+				query: { userId },
+			});
+			if (Array.isArray(data)) {
+				setNotifications(
+					data.map((n: Record<string, unknown>) => ({
+						id: n.id as string,
+						name: n.name as string,
+						notificationType: n.notificationType as string,
+						deliveryMethod: n.deliveryMethod as string,
+						deliveryConfig: n.deliveryConfig as Record<string, unknown> | null,
+						isActive: n.isActive as boolean,
+					})),
+				);
+			}
+		} catch {
+			// Non-critical
+		} finally {
+			setNotifsLoading(false);
+		}
+	}, [userId]);
+
 	useEffect(() => {
 		fetchClients();
+		fetchNotifications();
 		if (slack !== "connected") {
 			fetchSlackStatus();
 		}
-	}, [fetchClients, fetchSlackStatus, slack]);
+	}, [fetchClients, fetchSlackStatus, fetchNotifications, slack]);
 
 	const handleCreate = async (e: React.FormEvent) => {
 		e.preventDefault();
@@ -218,6 +277,52 @@ function SettingsPage() {
 		}
 	};
 
+	const handleCreateNotification = async (e: React.FormEvent) => {
+		e.preventDefault();
+		if (!notifName || !notifDest) {
+			toast.error("Name and Slack destination are required");
+			return;
+		}
+		setCreatingNotif(true);
+		try {
+			const deliveryConfig =
+				notifDest.type === "dm"
+					? { dmToSelf: true }
+					: { channelName: notifDest.channelName };
+
+			await (api.api.notifications.post as (body: unknown) => Promise<unknown>)(
+				{
+					userId,
+					name: notifName,
+					notificationType: notifType,
+					deliveryMethod: "slack",
+					deliveryConfig,
+				},
+			);
+			toast.success("Notification created");
+			setNotifName("");
+			setNotifType("new_video");
+			setNotifDest(null);
+			await fetchNotifications();
+		} catch {
+			toast.error("Failed to create notification");
+		} finally {
+			setCreatingNotif(false);
+		}
+	};
+
+	const handleDeleteNotification = async (id: string) => {
+		try {
+			await api.api.notifications({ id }).delete(null, {
+				query: { userId },
+			});
+			toast.success("Notification deleted");
+			await fetchNotifications();
+		} catch {
+			toast.error("Failed to delete notification");
+		}
+	};
+
 	return (
 		<div className="container mx-auto max-w-3xl px-4 py-6">
 			<h1 className="mb-6 font-bold text-xl">Settings</h1>
@@ -257,6 +362,106 @@ function SettingsPage() {
 					</CardFooter>
 				)}
 			</Card>
+
+			{/* Notification Config — only when Slack is connected */}
+			{slackConnected && (
+				<>
+					<Card className="mb-6">
+						<CardHeader>
+							<CardTitle>Create Notification</CardTitle>
+							<CardDescription>
+								Set up a Slack notification for scan events.
+							</CardDescription>
+						</CardHeader>
+						<form onSubmit={handleCreateNotification}>
+							<CardContent>
+								<div className="space-y-3">
+									<div className="space-y-1">
+										<Label htmlFor="notif-name">Name</Label>
+										<Input
+											id="notif-name"
+											value={notifName}
+											onChange={(e) => setNotifName(e.target.value)}
+											placeholder="e.g. Daily sync alerts"
+										/>
+									</div>
+									<div className="space-y-1">
+										<Label htmlFor="notif-type">Event type</Label>
+										<select
+											id="notif-type"
+											value={notifType}
+											onChange={(e) => setNotifType(e.target.value)}
+											className="flex h-9 w-full border border-input bg-background px-3 py-2 text-sm"
+										>
+											{NOTIFICATION_TYPES.map((t) => (
+												<option key={t.value} value={t.value}>
+													{t.label}
+												</option>
+											))}
+										</select>
+									</div>
+									<div className="space-y-1">
+										<Label>Slack destination</Label>
+										<SlackChannelPicker
+											value={notifDest}
+											onChange={setNotifDest}
+										/>
+									</div>
+								</div>
+							</CardContent>
+							<CardFooter>
+								<Button type="submit" disabled={creatingNotif}>
+									{creatingNotif ? "Creating..." : "Create notification"}
+								</Button>
+							</CardFooter>
+						</form>
+					</Card>
+
+					{/* Existing notifications */}
+					<h2 className="mb-3 font-semibold text-lg">Your Notifications</h2>
+					{notifsLoading ? (
+						<Skeleton className="mb-6 h-24 w-full" />
+					) : notifications.length === 0 ? (
+						<p className="mb-6 text-muted-foreground text-sm">
+							No notifications yet. Create one above.
+						</p>
+					) : (
+						<div className="mb-6 space-y-3">
+							{notifications.map((n) => {
+								const config = n.deliveryConfig as {
+									channelName?: string;
+									dmToSelf?: boolean;
+								} | null;
+								const dest = config?.dmToSelf
+									? "DM to me"
+									: config?.channelName
+										? `#${config.channelName}`
+										: "Unknown";
+								return (
+									<Card key={n.id} size="sm">
+										<CardHeader>
+											<CardTitle>{n.name}</CardTitle>
+											<CardDescription>
+												{n.notificationType.replace(/_/g, " ")} &middot;{" "}
+												{n.deliveryMethod} &middot; {dest}
+											</CardDescription>
+										</CardHeader>
+										<CardFooter>
+											<Button
+												variant="destructive"
+												size="sm"
+												onClick={() => handleDeleteNotification(n.id)}
+											>
+												Delete
+											</Button>
+										</CardFooter>
+									</Card>
+								);
+							})}
+						</div>
+					)}
+				</>
+			)}
 
 			{/* Arcade configuration reference */}
 			<Card className="mb-6">
