@@ -3,6 +3,7 @@ import { auth } from "@agentic-youtube-admin/auth";
 import prisma from "@agentic-youtube-admin/db";
 import { env } from "@agentic-youtube-admin/env/server";
 import { Elysia, t } from "elysia";
+import { consumePendingRedirect } from "./pending-redirects";
 
 export const arcadeAuthRoutes = new Elysia({ prefix: "/api/arcade" }).get(
 	"/verify",
@@ -59,11 +60,10 @@ export const arcadeAuthRoutes = new Elysia({ prefix: "/api/arcade" }).get(
 			});
 		}
 
-		// Redirect to dashboard — the frontend will complete the channel sync
-		return Response.redirect(
-			`${env.CORS_ORIGIN}/dashboard?youtube=connected`,
-			302,
-		);
+		// Redirect to the page that initiated the auth flow
+		const redirectPath =
+			consumePendingRedirect(arcadeUserId) ?? "/dashboard?youtube=connected";
+		return Response.redirect(`${env.CORS_ORIGIN}${redirectPath}`, 302);
 	},
 	{
 		query: t.Object({

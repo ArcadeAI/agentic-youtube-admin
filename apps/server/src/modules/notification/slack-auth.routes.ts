@@ -11,6 +11,7 @@ import {
 import { auth } from "@agentic-youtube-admin/auth";
 import prisma from "@agentic-youtube-admin/db";
 import { Elysia, t } from "elysia";
+import { setPendingRedirect } from "../arcade-auth/pending-redirects";
 
 async function resolveArcadeUserId(userId: string): Promise<string | null> {
 	const account = await prisma.account.findFirst({
@@ -62,6 +63,7 @@ export function createSlackAuthRoutes() {
 			);
 
 			if (authCheck.needsAuth) {
+				setPendingRedirect(arcadeUserId, "/settings?slack=connected");
 				return {
 					needsAuth: true,
 					authUrl: authCheck.authUrl,

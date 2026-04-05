@@ -7,6 +7,7 @@ import {
 import { getMyChannelResponseSchema } from "@agentic-youtube-admin/arcade/schemas/channel-analytics";
 import { auth } from "@agentic-youtube-admin/auth";
 import { Elysia, t } from "elysia";
+import { setPendingRedirect } from "../arcade-auth/pending-redirects";
 import type { YouTubeService } from "./youtube.service";
 
 export function createYouTubeRoutes(service: YouTubeService) {
@@ -39,6 +40,7 @@ export function createYouTubeRoutes(service: YouTubeService) {
 			);
 
 			if (authCheck.needsAuth) {
+				setPendingRedirect(arcadeUserId, "/dashboard?youtube=connected");
 				return {
 					needsAuth: true,
 					authUrl: authCheck.authUrl,
