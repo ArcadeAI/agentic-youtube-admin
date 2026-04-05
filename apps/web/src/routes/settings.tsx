@@ -23,13 +23,10 @@ import {
 import { api } from "@/lib/api";
 import { authClient } from "@/lib/auth-client";
 
-const NOTIFICATION_TYPES = [
-	{ value: "new_video", label: "New video published" },
-	{ value: "milestone_views", label: "Milestone views reached" },
-	{ value: "engagement_drop", label: "Engagement drop" },
-	{ value: "engagement_spike", label: "Engagement spike" },
-	{ value: "subscriber_change", label: "Subscriber change" },
-	{ value: "custom", label: "Custom" },
+const SCAN_TYPES = [
+	{ value: "owned_backfill", label: "Owned channel backfill" },
+	{ value: "owned_daily_sync", label: "Owned channel daily sync" },
+	{ value: "tracked_daily_poll", label: "Tracked channel daily poll" },
 ] as const;
 
 const SLACK_PENDING_AUTH_KEY = "slack_pending_auth_id";
@@ -87,7 +84,7 @@ function SettingsPage() {
 
 	// Notification config state
 	const [notifName, setNotifName] = useState("");
-	const [notifType, setNotifType] = useState<string>("new_video");
+	const [notifType, setNotifType] = useState<string>("owned_daily_sync");
 	const [notifDest, setNotifDest] = useState<SlackDestination | null>(null);
 	const [creatingNotif, setCreatingNotif] = useState(false);
 	const [notifications, setNotifications] = useState<
@@ -366,11 +363,11 @@ function SettingsPage() {
 			{/* Notification Config — only when Slack is connected */}
 			{slackConnected && (
 				<>
-					<Card className="mb-6">
+					<Card className="mb-6 overflow-visible">
 						<CardHeader>
 							<CardTitle>Create Notification</CardTitle>
 							<CardDescription>
-								Set up a Slack notification for scan events.
+								Get notified in Slack when a scheduled scan completes.
 							</CardDescription>
 						</CardHeader>
 						<form onSubmit={handleCreateNotification}>
@@ -386,14 +383,14 @@ function SettingsPage() {
 										/>
 									</div>
 									<div className="space-y-1">
-										<Label htmlFor="notif-type">Event type</Label>
+										<Label htmlFor="notif-type">Scan type</Label>
 										<select
 											id="notif-type"
 											value={notifType}
 											onChange={(e) => setNotifType(e.target.value)}
 											className="flex h-9 w-full border border-input bg-background px-3 py-2 text-sm"
 										>
-											{NOTIFICATION_TYPES.map((t) => (
+											{SCAN_TYPES.map((t) => (
 												<option key={t.value} value={t.value}>
 													{t.label}
 												</option>
