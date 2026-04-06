@@ -206,14 +206,26 @@ export class ScannerService {
 		const workflow = this.mastra.getWorkflow("transcription");
 		const run = await workflow.createRun();
 
-		// Determine scope: if channelId is provided, transcribe just that channel
-		const scope = channelId ? "owned" : "all";
+		const resolved = channelId
+			? await this.resolveTranscriptionTarget(channelId)
+			: { scope: "all" as const };
 
 		const result = await run.start({
 			inputData: {
 				userId,
-				channelDbId: channelId ?? undefined,
-				scope,
+				channelDbId:
+					resolved.scope === "owned"
+						? "channelDbId" in resolved
+							? resolved.channelDbId
+							: undefined
+						: undefined,
+				trackedChannelId:
+					resolved.scope === "tracked"
+						? "trackedChannelId" in resolved
+							? resolved.trackedChannelId
+							: undefined
+						: undefined,
+				scope: resolved.scope,
 				videoId: options?.videoId,
 				limit: options?.limit,
 			},
@@ -225,6 +237,30 @@ export class ScannerService {
 		throw new Error(
 			`Transcription workflow failed: ${result.status === "failed" ? result.error : result.status}`,
 		);
+	}
+
+	/**
+	 * Determine if a channel ID belongs to an owned or tracked channel.
+	 */
+	private async resolveTranscriptionTarget(
+		channelId: string,
+	): Promise<
+		| { scope: "owned"; channelDbId: string }
+		| { scope: "tracked"; trackedChannelId: string }
+	> {
+		const owned = await this.prisma.youTubeChannel.findUnique({
+			where: { id: channelId },
+			select: { id: true },
+		});
+		if (owned) return { scope: "owned", channelDbId: owned.id };
+
+		const tracked = await this.prisma.trackedChannel.findUnique({
+			where: { id: channelId },
+			select: { id: true },
+		});
+		if (tracked) return { scope: "tracked", trackedChannelId: tracked.id };
+
+		throw new Error(`Channel not found: ${channelId}`);
 	}
 
 	// ── Async process management ─────────────────────────────────────────────
@@ -327,10 +363,14 @@ export class ScannerService {
 	 */
 	async startTranscriptionAsync(
 		userId: string,
-		channelDbId: string | null,
+		channelId: string | null,
 		options?: { videoId?: string; limit?: number },
 	): Promise<{ processId: string }> {
 		if (!this.mastra) throw new Error("Mastra not initialized");
+
+		const resolved = channelId
+			? await this.resolveTranscriptionTarget(channelId)
+			: { scope: "all" as const };
 
 		const scanRun = await this.schedulerService.createScanRun("transcription", {
 			userId,
@@ -344,14 +384,23 @@ export class ScannerService {
 			workflowName: "transcription",
 		});
 
-		const scope = channelDbId ? "owned" : "all";
-
 		run
 			.start({
 				inputData: {
 					userId,
-					channelDbId: channelDbId ?? undefined,
-					scope,
+					channelDbId:
+						resolved.scope === "owned"
+							? "channelDbId" in resolved
+								? resolved.channelDbId
+								: undefined
+							: undefined,
+					trackedChannelId:
+						resolved.scope === "tracked"
+							? "trackedChannelId" in resolved
+								? resolved.trackedChannelId
+								: undefined
+							: undefined,
+					scope: resolved.scope,
 					videoId: options?.videoId,
 					limit: options?.limit,
 				},
@@ -372,7 +421,7 @@ export class ScannerService {
 				await this.notifyScanComplete(
 					userId,
 					"transcription",
-					channelDbId,
+					channelId,
 					result.status === "success" ? result.result : undefined,
 					error,
 				);
@@ -389,7 +438,7 @@ export class ScannerService {
 				await this.notifyScanComplete(
 					userId,
 					"transcription",
-					channelDbId,
+					channelId,
 					undefined,
 					errorMsg,
 				);
