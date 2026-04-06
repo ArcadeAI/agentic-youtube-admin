@@ -2,6 +2,10 @@ import prisma from "@agentic-youtube-admin/db";
 import { Elysia, t } from "elysia";
 import { authenticateInteractive } from "../../middleware/interactive-auth";
 import { NotificationService } from "../notification/notification.service";
+import type {
+	DeliveryMethod,
+	NotificationType,
+} from "../notification/notification.types";
 import type { ScannerService } from "../scanner/scanner.service";
 import { SchedulerService } from "../scheduler/scheduler.service";
 import {
@@ -348,7 +352,28 @@ export function createInteractiveSessionRoutes(scannerService: ScannerService) {
 				const arcadeUserId = await scannerService.resolveArcadeUserId(
 					auth.userId,
 				);
-				return scannerService.runTrackedDailyPoll(auth.userId, arcadeUserId);
+				try {
+					const result = await scannerService.runTrackedDailyPoll(
+						auth.userId,
+						arcadeUserId,
+					);
+					await scannerService.notifyScanComplete(
+						auth.userId,
+						"tracked_daily_poll",
+						null,
+						result,
+					);
+					return result;
+				} catch (err) {
+					await scannerService.notifyScanComplete(
+						auth.userId,
+						"tracked_daily_poll",
+						null,
+						undefined,
+						err instanceof Error ? err.message : String(err),
+					);
+					throw err;
+				}
 			})
 			// ── Notifications ────────────────────────────────────────────────────
 			.get(
@@ -374,8 +399,8 @@ export function createInteractiveSessionRoutes(scannerService: ScannerService) {
 					const auth = await authenticateInteractive(request);
 					return notificationService.create(auth.userId, {
 						name: body.name,
-						notificationType: body.notification_type as "new_video",
-						deliveryMethod: body.delivery_method as "email",
+						notificationType: body.notification_type as NotificationType,
+						deliveryMethod: body.delivery_method as DeliveryMethod,
 						channelId: body.channel_id,
 						conditions: body.conditions,
 						deliveryConfig: body.delivery_config,

@@ -7,15 +7,30 @@ export function createScannerRoutes(service: ScannerService) {
 			"/backfill",
 			async ({ body }) => {
 				const arcadeUserId = await service.resolveArcadeUserId(body.userId);
-				return service.runOwnedBackfill(
-					body.userId,
-					arcadeUserId,
-					body.channelId,
-					{
-						startDate: body.startDate,
-						endDate: body.endDate,
-					},
-				);
+				try {
+					const result = await service.runOwnedBackfill(
+						body.userId,
+						arcadeUserId,
+						body.channelId,
+						{ startDate: body.startDate, endDate: body.endDate },
+					);
+					await service.notifyScanComplete(
+						body.userId,
+						"owned_backfill",
+						body.channelId,
+						result,
+					);
+					return result;
+				} catch (err) {
+					await service.notifyScanComplete(
+						body.userId,
+						"owned_backfill",
+						body.channelId,
+						undefined,
+						err instanceof Error ? err.message : String(err),
+					);
+					throw err;
+				}
 			},
 			{
 				body: t.Object({
@@ -30,11 +45,29 @@ export function createScannerRoutes(service: ScannerService) {
 			"/daily-sync",
 			async ({ body }) => {
 				const arcadeUserId = await service.resolveArcadeUserId(body.userId);
-				return service.runOwnedDailySync(
-					body.userId,
-					arcadeUserId,
-					body.channelId,
-				);
+				try {
+					const result = await service.runOwnedDailySync(
+						body.userId,
+						arcadeUserId,
+						body.channelId,
+					);
+					await service.notifyScanComplete(
+						body.userId,
+						"owned_daily_sync",
+						body.channelId,
+						result,
+					);
+					return result;
+				} catch (err) {
+					await service.notifyScanComplete(
+						body.userId,
+						"owned_daily_sync",
+						body.channelId,
+						undefined,
+						err instanceof Error ? err.message : String(err),
+					);
+					throw err;
+				}
 			},
 			{
 				body: t.Object({
@@ -47,7 +80,28 @@ export function createScannerRoutes(service: ScannerService) {
 			"/daily-poll",
 			async ({ body }) => {
 				const arcadeUserId = await service.resolveArcadeUserId(body.userId);
-				return service.runTrackedDailyPoll(body.userId, arcadeUserId);
+				try {
+					const result = await service.runTrackedDailyPoll(
+						body.userId,
+						arcadeUserId,
+					);
+					await service.notifyScanComplete(
+						body.userId,
+						"tracked_daily_poll",
+						null,
+						result,
+					);
+					return result;
+				} catch (err) {
+					await service.notifyScanComplete(
+						body.userId,
+						"tracked_daily_poll",
+						null,
+						undefined,
+						err instanceof Error ? err.message : String(err),
+					);
+					throw err;
+				}
 			},
 			{
 				body: t.Object({

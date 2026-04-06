@@ -91,6 +91,12 @@ export class NotificationService {
 		});
 	}
 
+	async getActiveForUserAndType(userId: string, notificationType: string) {
+		return this.prisma.notificationConfig.findMany({
+			where: { userId, notificationType, isActive: true },
+		});
+	}
+
 	async getForSchedule(scheduleId: string) {
 		const schedule = await this.prisma.scanSchedule.findUnique({
 			where: { id: scheduleId },

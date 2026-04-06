@@ -91,13 +91,7 @@ export class ScannerService {
 				result,
 			);
 			await this.schedulerService.updateScheduleLastRun(scheduleId, "success");
-			await this.dispatchNotification(
-				scheduleId,
-				scanType,
-				channelId,
-				userId,
-				result,
-			);
+			await this.notifyScanComplete(userId, scanType, channelId, result);
 		} catch (err) {
 			const errorMsg = err instanceof Error ? err.message : String(err);
 			await this.schedulerService.completeScanRun(
@@ -111,11 +105,10 @@ export class ScannerService {
 				"error",
 				errorMsg,
 			);
-			await this.dispatchNotification(
-				scheduleId,
+			await this.notifyScanComplete(
+				userId,
 				scanType,
 				channelId,
-				userId,
 				undefined,
 				errorMsg,
 			);
@@ -251,14 +244,29 @@ export class ScannerService {
 					result.status === "success" ? result.result : undefined,
 					error,
 				);
+				await this.notifyScanComplete(
+					userId,
+					"owned_backfill",
+					channel.id,
+					result.status === "success" ? result.result : undefined,
+					error,
+				);
 			})
 			.catch(async (err) => {
 				activeRuns.delete(scanRun.id);
+				const errorMsg = err instanceof Error ? err.message : String(err);
 				await this.schedulerService.completeScanRun(
 					scanRun.id,
 					"error",
 					undefined,
-					err instanceof Error ? err.message : String(err),
+					errorMsg,
+				);
+				await this.notifyScanComplete(
+					userId,
+					"owned_backfill",
+					channel.id,
+					undefined,
+					errorMsg,
 				);
 			});
 
@@ -300,47 +308,50 @@ export class ScannerService {
 
 	// ── Notification dispatch ────────────────────────────────────────────────
 
-	private async dispatchNotification(
-		scheduleId: string,
+	async notifyScanComplete(
+		userId: string,
 		scanType: string,
 		channelId: string | null,
-		userId: string,
 		result?: unknown,
 		error?: string,
 	): Promise<void> {
 		if (!this.notificationService || !this.slackDeliveryService) return;
 
 		try {
-			const config = await this.notificationService.getForSchedule(scheduleId);
-			if (!config || config.deliveryMethod !== "slack") return;
-
-			const deliveryConfig = (config.deliveryConfig ?? {}) as {
-				channelName?: string;
-				dmToSelf?: boolean;
-			};
+			const configs = await this.notificationService.getActiveForUserAndType(
+				userId,
+				scanType,
+			);
+			if (configs.length === 0) return;
 
 			const channelTitle = await this.resolveChannelTitle(channelId);
 
-			let message: string;
-			if (error) {
-				message = formatScanError(scanType, error, channelTitle);
-			} else {
-				message = this.formatSuccessMessage(scanType, result, channelTitle);
-			}
+			const message = error
+				? formatScanError(scanType, error, channelTitle)
+				: this.formatSuccessMessage(scanType, result, channelTitle);
 
-			const sendResult = await this.slackDeliveryService.send(
-				userId,
-				deliveryConfig,
-				message,
-			);
+			for (const config of configs) {
+				if (config.deliveryMethod !== "slack") continue;
 
-			if (sendResult.ok) {
-				await this.notificationService.markTriggered(config.id);
-			} else {
-				console.error(
-					`Slack notification failed for schedule ${scheduleId}:`,
-					sendResult.error,
+				const deliveryConfig = (config.deliveryConfig ?? {}) as {
+					channelName?: string;
+					dmToSelf?: boolean;
+				};
+
+				const sendResult = await this.slackDeliveryService.send(
+					userId,
+					deliveryConfig,
+					message,
 				);
+
+				if (sendResult.ok) {
+					await this.notificationService.markTriggered(config.id);
+				} else {
+					console.error(
+						`Slack notification failed for config ${config.id}:`,
+						sendResult.error,
+					);
+				}
 			}
 		} catch (err) {
 			console.error("Notification dispatch error:", err);
