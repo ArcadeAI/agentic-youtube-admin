@@ -192,6 +192,12 @@ export const trackingRoutes = new Elysia({ prefix: "/api/tracking" })
 			return prisma.trackedVideo.findMany({
 				where: { channelId: params.id },
 				orderBy: { publishedAt: "desc" },
+				include: {
+					snapshots: {
+						orderBy: { date: "desc" },
+						take: 1,
+					},
+				},
 			});
 		},
 		{

@@ -34,6 +34,12 @@ interface TrackedChannel {
 	lastPollError: string | null;
 }
 
+interface VideoSnapshot {
+	viewCount: number | string;
+	likeCount: number;
+	commentCount: number;
+}
+
 interface TrackedVideo {
 	id: string;
 	videoId: string;
@@ -41,6 +47,7 @@ interface TrackedVideo {
 	thumbnailUrl: string | null;
 	publishedAt: string;
 	contentType: string | null;
+	snapshots: VideoSnapshot[];
 }
 
 interface ChannelSnapshot {
@@ -324,6 +331,20 @@ function TrackedChannelDetailPage() {
 										<span>
 											{new Date(video.publishedAt).toLocaleDateString()}
 										</span>
+										{video.snapshots?.[0] && (
+											<>
+												<span>
+													{formatNumber(video.snapshots[0].viewCount)} views
+												</span>
+												<span>
+													{formatNumber(video.snapshots[0].likeCount)} likes
+												</span>
+												<span>
+													{formatNumber(video.snapshots[0].commentCount)}{" "}
+													comments
+												</span>
+											</>
+										)}
 										{video.contentType && (
 											<span className="rounded bg-muted px-1">
 												{video.contentType}
