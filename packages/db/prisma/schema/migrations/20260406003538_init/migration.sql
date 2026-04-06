@@ -196,7 +196,6 @@ CREATE TABLE "scan_schedule" (
     "lastRunStatus" TEXT,
     "lastRunError" TEXT,
     "config" JSONB,
-    "notificationConfigId" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -749,9 +748,6 @@ ALTER TABLE "notification_config" ADD CONSTRAINT "notification_config_userId_fke
 
 -- AddForeignKey
 ALTER TABLE "scan_schedule" ADD CONSTRAINT "scan_schedule_userId_fkey" FOREIGN KEY ("userId") REFERENCES "user"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "scan_schedule" ADD CONSTRAINT "scan_schedule_notificationConfigId_fkey" FOREIGN KEY ("notificationConfigId") REFERENCES "notification_config"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "scan_run" ADD CONSTRAINT "scan_run_scheduleId_fkey" FOREIGN KEY ("scheduleId") REFERENCES "scan_schedule"("id") ON DELETE CASCADE ON UPDATE CASCADE;
