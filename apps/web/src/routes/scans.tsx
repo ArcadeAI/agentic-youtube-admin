@@ -59,6 +59,7 @@ interface Channel {
 	id: string;
 	channelId: string;
 	channelTitle: string;
+	type: "owned" | "tracked";
 }
 
 interface VideoOption {
@@ -128,10 +129,29 @@ function ScansPage() {
 
 	const fetchChannels = useCallback(async () => {
 		try {
-			const { data } = await api.api.youtube.channels.get({
-				query: { userId },
-			});
-			setChannels((data as Channel[]) ?? []);
+			const [ownedRes, trackedRes] = await Promise.all([
+				api.api.youtube.channels.get({ query: { userId } }),
+				(
+					api.api.tracking.channels.get as (
+						opts: unknown,
+					) => Promise<{ data: unknown }>
+				)({ query: { userId } }),
+			]);
+			const owned = (
+				(ownedRes.data as {
+					id: string;
+					channelId: string;
+					channelTitle: string;
+				}[]) ?? []
+			).map((c) => ({ ...c, type: "owned" as const }));
+			const tracked = (
+				(trackedRes.data as {
+					id: string;
+					channelId: string;
+					channelTitle: string;
+				}[]) ?? []
+			).map((c) => ({ ...c, type: "tracked" as const }));
+			setChannels([...owned, ...tracked]);
 		} catch {
 			// Channels may not be connected yet
 		} finally {
@@ -168,8 +188,14 @@ function ScansPage() {
 	}, [channels, selectedChannel, newChannelId]);
 
 	// Fetch videos when transcription mode + channel selected
+	const selectedChannelObj = channels.find((c) => c.id === selectedChannel);
+
 	useEffect(() => {
-		if (scanType !== "transcription" || !selectedChannel) {
+		if (
+			scanType !== "transcription" ||
+			!selectedChannel ||
+			!selectedChannelObj
+		) {
 			setVideos([]);
 			return;
 		}
@@ -177,17 +203,23 @@ function ScansPage() {
 		const fetchVideos = async () => {
 			setVideosLoading(true);
 			try {
-				const { data } = await (
-					api.api.youtube.channels({ channelId: selectedChannel }).videos
-						.get as (opts: unknown) => Promise<{ data: unknown }>
-				)({ query: { page: "1", pageSize: "200" } });
-				if (!cancelled) {
-					const result = data as {
-						data: VideoOption[];
-						pagination: unknown;
-					};
-					setVideos(result.data ?? []);
+				let videoList: VideoOption[] = [];
+				if (selectedChannelObj.type === "owned") {
+					const { data } = await (
+						api.api.youtube.channels({ channelId: selectedChannel }).videos
+							.get as (opts: unknown) => Promise<{ data: unknown }>
+					)({ query: { page: "1", pageSize: "200" } });
+					const result = data as { data: VideoOption[]; pagination: unknown };
+					videoList = result.data ?? [];
+				} else {
+					const { data } = await (
+						api.api.tracking.channels({ id: selectedChannel }).videos.get as (
+							opts: unknown,
+						) => Promise<{ data: unknown }>
+					)({ query: { userId } });
+					videoList = (data as VideoOption[]) ?? [];
 				}
+				if (!cancelled) setVideos(videoList);
 			} catch {
 				if (!cancelled) setVideos([]);
 			} finally {
@@ -198,7 +230,7 @@ function ScansPage() {
 		return () => {
 			cancelled = true;
 		};
-	}, [scanType, selectedChannel]);
+	}, [scanType, selectedChannel, selectedChannelObj, userId]);
 
 	const channelName = (id: string | null) =>
 		channels.find((c) => c.id === id)?.channelTitle ?? id ?? "—";
@@ -379,11 +411,19 @@ function ScansPage() {
 										{scanType === "transcription" && (
 											<option value="">All channels</option>
 										)}
-										{channels.map((c) => (
-											<option key={c.id} value={c.id}>
-												{c.channelTitle}
-											</option>
-										))}
+										{channels
+											.filter((c) =>
+												scanType === "transcription"
+													? true
+													: c.type === "owned",
+											)
+											.map((c) => (
+												<option key={c.id} value={c.id}>
+													{scanType === "transcription"
+														? `[${c.type === "owned" ? "Owned" : "Tracked"}] ${c.channelTitle}`
+														: c.channelTitle}
+												</option>
+											))}
 									</select>
 								)}
 							</div>
