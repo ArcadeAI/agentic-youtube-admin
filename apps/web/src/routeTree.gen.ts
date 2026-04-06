@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as ScansRouteImport } from './routes/scans'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as ConsentRouteImport } from './routes/consent'
@@ -19,6 +20,11 @@ import { Route as ChannelsChannelIdRouteImport } from './routes/channels.$channe
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ScansRoute = ScansRouteImport.update({
+  id: '/scans',
+  path: '/scans',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -52,6 +58,7 @@ export interface FileRoutesByFullPath {
   '/consent': typeof ConsentRoute
   '/dashboard': typeof DashboardRoute
   '/login': typeof LoginRoute
+  '/scans': typeof ScansRoute
   '/settings': typeof SettingsRoute
   '/channels/$channelId': typeof ChannelsChannelIdRoute
 }
@@ -60,6 +67,7 @@ export interface FileRoutesByTo {
   '/consent': typeof ConsentRoute
   '/dashboard': typeof DashboardRoute
   '/login': typeof LoginRoute
+  '/scans': typeof ScansRoute
   '/settings': typeof SettingsRoute
   '/channels/$channelId': typeof ChannelsChannelIdRoute
 }
@@ -69,6 +77,7 @@ export interface FileRoutesById {
   '/consent': typeof ConsentRoute
   '/dashboard': typeof DashboardRoute
   '/login': typeof LoginRoute
+  '/scans': typeof ScansRoute
   '/settings': typeof SettingsRoute
   '/channels/$channelId': typeof ChannelsChannelIdRoute
 }
@@ -79,6 +88,7 @@ export interface FileRouteTypes {
     | '/consent'
     | '/dashboard'
     | '/login'
+    | '/scans'
     | '/settings'
     | '/channels/$channelId'
   fileRoutesByTo: FileRoutesByTo
@@ -87,6 +97,7 @@ export interface FileRouteTypes {
     | '/consent'
     | '/dashboard'
     | '/login'
+    | '/scans'
     | '/settings'
     | '/channels/$channelId'
   id:
@@ -95,6 +106,7 @@ export interface FileRouteTypes {
     | '/consent'
     | '/dashboard'
     | '/login'
+    | '/scans'
     | '/settings'
     | '/channels/$channelId'
   fileRoutesById: FileRoutesById
@@ -104,6 +116,7 @@ export interface RootRouteChildren {
   ConsentRoute: typeof ConsentRoute
   DashboardRoute: typeof DashboardRoute
   LoginRoute: typeof LoginRoute
+  ScansRoute: typeof ScansRoute
   SettingsRoute: typeof SettingsRoute
   ChannelsChannelIdRoute: typeof ChannelsChannelIdRoute
 }
@@ -115,6 +128,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/scans': {
+      id: '/scans'
+      path: '/scans'
+      fullPath: '/scans'
+      preLoaderRoute: typeof ScansRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -160,6 +180,7 @@ const rootRouteChildren: RootRouteChildren = {
   ConsentRoute: ConsentRoute,
   DashboardRoute: DashboardRoute,
   LoginRoute: LoginRoute,
+  ScansRoute: ScansRoute,
   SettingsRoute: SettingsRoute,
   ChannelsChannelIdRoute: ChannelsChannelIdRoute,
 }

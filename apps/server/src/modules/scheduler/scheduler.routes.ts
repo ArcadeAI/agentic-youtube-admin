@@ -1,8 +1,12 @@
 import { Elysia, t } from "elysia";
+import type { CronManager } from "./scheduler.cron";
 import type { SchedulerService } from "./scheduler.service";
 import { scanTypes } from "./scheduler.types";
 
-export function createSchedulerRoutes(service: SchedulerService) {
+export function createSchedulerRoutes(
+	service: SchedulerService,
+	cronManager: CronManager,
+) {
 	return new Elysia({ prefix: "/api/scheduler" })
 		.get(
 			"/schedules",
@@ -30,13 +34,22 @@ export function createSchedulerRoutes(service: SchedulerService) {
 		.post(
 			"/schedules",
 			async ({ body }) => {
-				return service.createSchedule(body.userId, {
+				const schedule = await service.createSchedule(body.userId, {
 					scanType: body.scanType,
 					channelId: body.channelId,
 					cronExpression: body.cronExpression,
 					config: body.config,
 					notificationConfigId: body.notificationConfigId,
 				});
+				cronManager.register(
+					schedule.id,
+					schedule.cronExpression,
+					schedule.scanType,
+					body.userId,
+					schedule.channelId,
+					schedule.config as Record<string, unknown> | null,
+				);
+				return schedule;
 			},
 			{
 				body: t.Object({
@@ -59,6 +72,18 @@ export function createSchedulerRoutes(service: SchedulerService) {
 					notificationConfigId: body.notificationConfigId,
 				});
 				if (!updated) return new Response("Not found", { status: 404 });
+				if (updated.isActive) {
+					cronManager.register(
+						updated.id,
+						updated.cronExpression,
+						updated.scanType,
+						updated.userId,
+						updated.channelId,
+						updated.config as Record<string, unknown> | null,
+					);
+				} else {
+					cronManager.remove(updated.id);
+				}
 				return updated;
 			},
 			{
@@ -77,6 +102,7 @@ export function createSchedulerRoutes(service: SchedulerService) {
 			async ({ params, query }) => {
 				const deleted = await service.deleteSchedule(params.id, query.userId);
 				if (!deleted) return new Response("Not found", { status: 404 });
+				cronManager.remove(params.id);
 				return { success: true };
 			},
 			{
