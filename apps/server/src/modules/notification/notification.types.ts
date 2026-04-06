@@ -1,12 +1,9 @@
 import { z } from "zod";
 
 export const notificationTypes = [
-	"new_video",
-	"milestone_views",
-	"engagement_drop",
-	"engagement_spike",
-	"subscriber_change",
-	"custom",
+	"owned_backfill",
+	"owned_daily_sync",
+	"tracked_daily_poll",
 ] as const;
 
 export type NotificationType = (typeof notificationTypes)[number];
