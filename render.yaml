@@ -10,6 +10,10 @@ services:
     runtime: docker
     dockerfilePath: ./Dockerfile.server
     plan: starter
+    disk:
+      name: transcripts
+      mountPath: /mnt/transcripts
+      sizeGB: 10
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -39,6 +43,8 @@ services:
         sync: false
       - key: YT_PROXY_SECRET
         sync: false
+      - key: TRANSCRIPT_ROOT
+        value: /mnt/transcripts
 
   # YouTube Transcript Proxy (WARP + yt-dlp + Whisper)
   - type: web
