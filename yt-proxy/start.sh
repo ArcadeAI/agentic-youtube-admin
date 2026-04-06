@@ -6,7 +6,7 @@ warp-svc &
 sleep 2
 
 # Register (first run) and configure proxy mode
-warp-cli registration new 2>/dev/null || true
+warp-cli registration new --accept-tos 2>/dev/null || true
 warp-cli mode proxy
 warp-cli proxy port 1080
 warp-cli connect
