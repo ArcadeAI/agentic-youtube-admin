@@ -15,7 +15,7 @@ import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { authClient } from "@/lib/auth-client";
 
-export const Route = createFileRoute("/tracking")({
+export const Route = createFileRoute("/tracking/")({
 	component: TrackingPage,
 	beforeLoad: async () => {
 		const session = await authClient.getSession();
@@ -175,8 +175,10 @@ function TrackingPage() {
 					{channels.map((channel) => (
 						<Card key={channel.id}>
 							<Link
-								to="/tracking/$channelId"
-								params={{ channelId: channel.id }}
+								to="/tracking/$handle"
+								params={{
+									handle: channel.customUrl ?? channel.channelId,
+								}}
 								className="block"
 							>
 								<CardHeader>

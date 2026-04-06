@@ -114,6 +114,13 @@ export const trackingRoutes = new Elysia({ prefix: "/api/tracking" })
 	.get(
 		"/channels/:id/snapshots",
 		async ({ params, query }) => {
+			// Verify ownership
+			const channel = await prisma.trackedChannel.findFirst({
+				where: { id: params.id, userId: query.userId },
+				select: { id: true },
+			});
+			if (!channel) return new Response("Not found", { status: 404 });
+
 			const where: Record<string, unknown> = { channelId: params.id };
 			if (query.startDate || query.endDate) {
 				const dateFilter: Record<string, Date> = {};
@@ -131,6 +138,7 @@ export const trackingRoutes = new Elysia({ prefix: "/api/tracking" })
 				id: t.String(),
 			}),
 			query: t.Object({
+				userId: t.String(),
 				startDate: t.Optional(t.String()),
 				endDate: t.Optional(t.String()),
 			}),
@@ -140,6 +148,13 @@ export const trackingRoutes = new Elysia({ prefix: "/api/tracking" })
 	.get(
 		"/channels/:id/scores",
 		async ({ params, query }) => {
+			// Verify ownership
+			const channel = await prisma.trackedChannel.findFirst({
+				where: { id: params.id, userId: query.userId },
+				select: { id: true },
+			});
+			if (!channel) return new Response("Not found", { status: 404 });
+
 			const where: Record<string, unknown> = { channelId: params.id };
 			if (query.startDate || query.endDate) {
 				const dateFilter: Record<string, Date> = {};
@@ -157,6 +172,7 @@ export const trackingRoutes = new Elysia({ prefix: "/api/tracking" })
 				id: t.String(),
 			}),
 			query: t.Object({
+				userId: t.String(),
 				startDate: t.Optional(t.String()),
 				endDate: t.Optional(t.String()),
 			}),
@@ -165,7 +181,14 @@ export const trackingRoutes = new Elysia({ prefix: "/api/tracking" })
 
 	.get(
 		"/channels/:id/videos",
-		async ({ params }) => {
+		async ({ params, query }) => {
+			// Verify ownership
+			const channel = await prisma.trackedChannel.findFirst({
+				where: { id: params.id, userId: query.userId },
+				select: { id: true },
+			});
+			if (!channel) return new Response("Not found", { status: 404 });
+
 			return prisma.trackedVideo.findMany({
 				where: { channelId: params.id },
 				orderBy: { publishedAt: "desc" },
@@ -174,6 +197,9 @@ export const trackingRoutes = new Elysia({ prefix: "/api/tracking" })
 		{
 			params: t.Object({
 				id: t.String(),
+			}),
+			query: t.Object({
+				userId: t.String(),
 			}),
 		},
 	)
@@ -203,6 +229,15 @@ export const trackingRoutes = new Elysia({ prefix: "/api/tracking" })
 	.get(
 		"/videos/:id/snapshots",
 		async ({ params, query }) => {
+			// Verify ownership via video → channel → user
+			const video = await prisma.trackedVideo.findFirst({
+				where: { id: params.id },
+				select: { channel: { select: { userId: true } } },
+			});
+			if (!video || video.channel.userId !== query.userId) {
+				return new Response("Not found", { status: 404 });
+			}
+
 			const where: Record<string, unknown> = { videoId: params.id };
 			if (query.startDate || query.endDate) {
 				const dateFilter: Record<string, Date> = {};
@@ -220,6 +255,7 @@ export const trackingRoutes = new Elysia({ prefix: "/api/tracking" })
 				id: t.String(),
 			}),
 			query: t.Object({
+				userId: t.String(),
 				startDate: t.Optional(t.String()),
 				endDate: t.Optional(t.String()),
 			}),

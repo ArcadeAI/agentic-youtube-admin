@@ -13,7 +13,7 @@ import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { authClient } from "@/lib/auth-client";
 
-export const Route = createFileRoute("/tracking/$channelId")({
+export const Route = createFileRoute("/tracking/$handle")({
 	component: TrackedChannelDetailPage,
 	beforeLoad: async () => {
 		const session = await authClient.getSession();
@@ -45,7 +45,7 @@ interface TrackedVideo {
 
 function TrackedChannelDetailPage() {
 	const { session } = Route.useRouteContext();
-	const { channelId } = Route.useParams();
+	const { handle } = Route.useParams();
 	const userId = session.data?.user.id ?? "";
 	const arcadeUserId = session.data?.user.email ?? "";
 
@@ -55,32 +55,53 @@ function TrackedChannelDetailPage() {
 	const [polling, setPolling] = useState(false);
 	const [discovering, setDiscovering] = useState(false);
 
+	// Find the channel by customUrl or channelId match
+	const findChannel = useCallback(
+		(channels: TrackedChannel[]) => {
+			return (
+				channels.find(
+					(c) =>
+						c.customUrl === handle ||
+						c.customUrl === `@${handle}` ||
+						c.channelId === handle,
+				) ?? null
+			);
+		},
+		[handle],
+	);
+
 	const fetchData = useCallback(async () => {
 		try {
-			const [channelsRes, videosRes] = await Promise.all([
-				api.api.tracking.channels.get({ query: { userId } }),
-				api.api.tracking.channels({ id: channelId }).videos.get(),
-			]);
-			const allChannels =
-				(channelsRes.data as unknown as TrackedChannel[]) ?? [];
-			setChannel(allChannels.find((c) => c.id === channelId) ?? null);
-			setVideos((videosRes.data as unknown as TrackedVideo[]) ?? []);
+			const { data: channelsData } = await api.api.tracking.channels.get({
+				query: { userId },
+			});
+			const allChannels = (channelsData as unknown as TrackedChannel[]) ?? [];
+			const matched = findChannel(allChannels);
+			setChannel(matched);
+
+			if (matched) {
+				const { data: videosData } = await api.api.tracking
+					.channels({ id: matched.id })
+					.videos.get({ query: { userId } });
+				setVideos((videosData as unknown as TrackedVideo[]) ?? []);
+			}
 		} catch {
 			toast.error("Failed to load channel data");
 		} finally {
 			setLoading(false);
 		}
-	}, [userId, channelId]);
+	}, [userId, findChannel]);
 
 	useEffect(() => {
 		fetchData();
 	}, [fetchData]);
 
 	const handlePoll = async () => {
+		if (!channel) return;
 		setPolling(true);
 		try {
 			await (
-				api.api.tracking.channels({ id: channelId }).poll.post as (
+				api.api.tracking.channels({ id: channel.id }).poll.post as (
 					body: unknown,
 				) => Promise<unknown>
 			)({
@@ -97,10 +118,11 @@ function TrackedChannelDetailPage() {
 	};
 
 	const handleDiscover = async () => {
+		if (!channel) return;
 		setDiscovering(true);
 		try {
 			const { data } = await (
-				api.api.tracking.channels({ id: channelId }).discover.post as (
+				api.api.tracking.channels({ id: channel.id }).discover.post as (
 					body: unknown,
 				) => Promise<{ data: unknown }>
 			)({
