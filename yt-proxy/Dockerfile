@@ -3,7 +3,7 @@ FROM python:3.13-slim
 # System deps: ffmpeg, curl, ca-certificates, gnupg
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-      curl ca-certificates gnupg ffmpeg unzip && \
+      curl ca-certificates gnupg ffmpeg unzip dbus && \
     # Cloudflare WARP client
     curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | \
       gpg --dearmor -o /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg && \
