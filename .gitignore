@@ -3,6 +3,9 @@ node_modules
 .pnp
 .pnp.js
 
+# presentation
+presentation.md
+
 # Build outputs
 dist
 build

@@ -4,21 +4,21 @@ import logging
 
 import httpx
 from youtube_transcript_api import YouTubeTranscriptApi
-from youtube_transcript_api.proxies import GenericProxies
+from youtube_transcript_api.proxies import GenericProxyConfig
 
 logger = logging.getLogger(__name__)
 
 WARP_PROXY = "socks5://127.0.0.1:1080"
 
 
-def _build_proxies() -> GenericProxies | None:
+def _build_proxies() -> GenericProxyConfig | None:
     """Build proxy config if WARP is available."""
     try:
         transport = httpx.HTTPTransport(proxy=WARP_PROXY)
         client = httpx.Client(transport=transport, timeout=5)
         client.get("https://www.youtube.com", follow_redirects=True)
         client.close()
-        return GenericProxies(WARP_PROXY)
+        return GenericProxyConfig(https_url=WARP_PROXY)
     except Exception:
         logger.warning("WARP proxy not available, fetching captions without proxy")
         return None
@@ -29,7 +29,7 @@ def fetch_captions(video_id: str) -> str | None:
     proxies = _build_proxies()
 
     try:
-        ytt_api = YouTubeTranscriptApi(proxies=proxies) if proxies else YouTubeTranscriptApi()
+        ytt_api = YouTubeTranscriptApi(proxy_config=proxies) if proxies else YouTubeTranscriptApi()
         transcript = ytt_api.fetch(video_id, languages=["en"])
 
         # Join all snippet texts into a single string
@@ -43,7 +43,7 @@ def fetch_captions(video_id: str) -> str | None:
             return None
 
         try:
-            ytt_api = YouTubeTranscriptApi(proxies=proxies) if proxies else YouTubeTranscriptApi()
+            ytt_api = YouTubeTranscriptApi(proxy_config=proxies) if proxies else YouTubeTranscriptApi()
             transcript_list = ytt_api.list(video_id)
             # Pick first available transcript
             for t in transcript_list:
