@@ -5,11 +5,10 @@ import {
 	mapPublicChannelToSnapshot,
 } from "@agentic-youtube-admin/arcade/mappers/tracked-channel.mapper";
 import { mapPublicVideoStatsToSnapshot } from "@agentic-youtube-admin/arcade/mappers/tracked-video-snapshot.mapper";
-import { mapPublicVideoToTrackedDb } from "@agentic-youtube-admin/arcade/mappers/video.mapper";
 import {
-	discoverAllPublicVideosResponseSchema,
 	getPublicChannelInfoResponseSchema,
 	getPublicVideoStatsResponseSchema,
+	listPublicChannelVideosResponseSchema,
 	searchChannelsResponseSchema,
 } from "@agentic-youtube-admin/arcade/schemas/public-channel";
 import { scoreChannelResponseSchema } from "@agentic-youtube-admin/arcade/schemas/score-channel";
@@ -326,39 +325,52 @@ export class TrackingService {
 			where: { id: trackedChannelId, userId },
 		});
 
-		const result = await callTool(
-			TOOL_NAMES.DISCOVER_ALL_PUBLIC_VIDEOS,
-			arcadeUserId,
-			{ channel_id: channel.channelId },
-			discoverAllPublicVideosResponseSchema,
-		);
-		if (!result.ok) throw result.error;
+		// Paginate through all videos using ListPublicChannelVideos
+		let nextPageToken: string | null = null;
+		let upsertedCount = 0;
+		const batchSize = 50;
 
-		const upserted = [];
-		for (const video of result.data.videos) {
-			const videoData = mapPublicVideoToTrackedDb(video, trackedChannelId);
-			const record = await this.db.trackedVideo.upsert({
-				where: { videoId: video.videoId },
-				create: videoData,
-				update: {
-					title: videoData.title,
-					description: videoData.description,
-					thumbnailUrl: videoData.thumbnailUrl,
-					duration: videoData.duration,
-					tags: videoData.tags,
-					categoryId: videoData.categoryId,
-					liveBroadcastContent: videoData.liveBroadcastContent,
-					contentType: videoData.contentType,
-				},
-			});
-			upserted.push(record);
-		}
+		do {
+			const params: Record<string, unknown> = {
+				channel_id_or_handle: channel.channelId,
+				num_videos: batchSize,
+			};
+			if (nextPageToken) params.next_page_token = nextPageToken;
+
+			const result = await callTool(
+				TOOL_NAMES.LIST_PUBLIC_CHANNEL_VIDEOS,
+				arcadeUserId,
+				params,
+				listPublicChannelVideosResponseSchema,
+			);
+			if (!result.ok) throw result.error;
+
+			for (const video of result.data.videos) {
+				await this.db.trackedVideo.upsert({
+					where: { videoId: video.video_id },
+					create: {
+						channelId: trackedChannelId,
+						videoId: video.video_id,
+						title: video.title,
+						description: video.description ?? null,
+						thumbnailUrl: video.thumbnail ?? null,
+						publishedAt: new Date(video.published_at),
+					},
+					update: {
+						title: video.title,
+						description: video.description ?? null,
+						thumbnailUrl: video.thumbnail ?? null,
+					},
+				});
+				upsertedCount++;
+			}
+
+			nextPageToken = result.data.next_page_token ?? null;
+		} while (nextPageToken);
 
 		return {
-			totalDiscovered: result.data.totalVideosDiscovered,
-			totalReported: result.data.totalVideosReported,
-			contentTypeCounts: result.data.contentTypeCounts,
-			upsertedCount: upserted.length,
+			totalDiscovered: upsertedCount,
+			upsertedCount,
 		};
 	}
 
