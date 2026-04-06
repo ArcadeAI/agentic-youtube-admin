@@ -2,9 +2,9 @@
 set -e
 
 NAME=${1:?"Usage: ./scripts/create-migration.sh <migration-name>"}
-SCHEMA="packages/db/prisma/schema"
 CONTAINER="pg-migrate-$$"
 PORT=5433
+DB_DIR="packages/db"
 
 echo "Starting temporary Postgres..."
 docker run --rm -d -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=ytadmin \
@@ -12,12 +12,16 @@ docker run --rm -d -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=ytadmin \
 trap "docker stop $CONTAINER 2>/dev/null" EXIT
 sleep 3
 
-export DATABASE_URL="postgresql://postgres:postgres@localhost:$PORT/ytadmin"
+DB_URL="postgresql://postgres:postgres@localhost:$PORT/ytadmin"
 
 echo "Applying existing migrations to reach current state..."
-bunx prisma migrate deploy --schema "$SCHEMA" --url "$DATABASE_URL"
+cd "$DB_DIR"
+DATABASE_URL="$DB_URL" bunx prisma migrate deploy
+echo ""
 
 echo "Generating migration: $NAME..."
-bunx prisma migrate dev --name "$NAME" --schema "$SCHEMA" --url "$DATABASE_URL"
+DATABASE_URL="$DB_URL" bunx prisma migrate dev --name "$NAME"
+cd - > /dev/null
 
-echo "Done. New migration created."
+echo ""
+echo "Done. Review the new migration in $DB_DIR/prisma/migrations/"
