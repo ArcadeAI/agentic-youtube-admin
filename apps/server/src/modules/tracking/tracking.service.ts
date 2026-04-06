@@ -4,10 +4,8 @@ import {
 	mapPublicChannelInfoToDb,
 	mapPublicChannelToSnapshot,
 } from "@agentic-youtube-admin/arcade/mappers/tracked-channel.mapper";
-import { mapPublicVideoStatsToSnapshot } from "@agentic-youtube-admin/arcade/mappers/tracked-video-snapshot.mapper";
 import {
 	getPublicChannelInfoResponseSchema,
-	getPublicVideoStatsResponseSchema,
 	listPublicChannelVideosResponseSchema,
 	searchChannelsResponseSchema,
 } from "@agentic-youtube-admin/arcade/schemas/public-channel";
@@ -156,19 +154,53 @@ export class TrackingService {
 			},
 		});
 
-		// Fetch video stats if there are tracked videos
+		// Fetch video stats via ListPublicChannelVideos (includes views/likes/comments)
 		if (channel.videos.length > 0) {
-			const videoIds = channel.videos.map(
-				(v: { id: string; videoId: string }) => v.videoId,
-			);
-			const videoStatsResult = await callTool(
-				TOOL_NAMES.GET_PUBLIC_VIDEO_STATS,
-				arcadeUserId,
-				{ video_ids: videoIds.join(",") },
-				getPublicVideoStatsResponseSchema,
+			const videoIdMap = new Map<string, string>(
+				channel.videos.map((v: { id: string; videoId: string }) => [
+					v.videoId,
+					v.id,
+				]),
 			);
 
-			if (videoStatsResult.ok) {
+			// Fetch enough videos to cover tracked ones
+			let nextPageToken: string | null = null;
+			const statsMap = new Map<
+				string,
+				{ views: number; likes: number; comments: number }
+			>();
+
+			do {
+				const params: Record<string, unknown> = {
+					channel_id_or_handle: channel.channelId,
+					num_videos: 50,
+				};
+				if (nextPageToken) params.next_page_token = nextPageToken;
+
+				const videoListResult = await callTool(
+					TOOL_NAMES.LIST_PUBLIC_CHANNEL_VIDEOS,
+					arcadeUserId,
+					params,
+					listPublicChannelVideosResponseSchema,
+				);
+				if (!videoListResult.ok) break;
+
+				for (const v of videoListResult.data.videos) {
+					if (videoIdMap.has(v.video_id)) {
+						statsMap.set(v.video_id, {
+							views: v.views,
+							likes: v.likes,
+							comments: v.comments,
+						});
+					}
+				}
+
+				// Stop paginating once we've found stats for all tracked videos
+				if (statsMap.size >= videoIdMap.size) break;
+				nextPageToken = videoListResult.data.next_page_token ?? null;
+			} while (nextPageToken);
+
+			if (statsMap.size > 0) {
 				// Get previous snapshots for delta computation
 				type PrevSnapshot = {
 					videoId: string;
@@ -193,26 +225,25 @@ export class TrackingService {
 					previousSnapshots.map((s) => [s.videoId, s]),
 				);
 
-				const videoIdMap = new Map<string, string>(
-					channel.videos.map((v: { id: string; videoId: string }) => [
-						v.videoId,
-						v.id,
-					]),
-				);
-
-				for (const [ytVideoId, stats] of Object.entries(
-					videoStatsResult.data,
-				)) {
+				for (const [ytVideoId, stats] of statsMap) {
 					const dbVideoId = videoIdMap.get(ytVideoId);
 					if (!dbVideoId) continue;
 
 					const prev = prevMap.get(dbVideoId);
-					const videoSnapshotData = mapPublicVideoStatsToSnapshot(
-						stats,
-						dbVideoId,
-						today,
-						prev,
-					);
+					const viewCount = BigInt(stats.views);
+					const likeCount = stats.likes;
+					const commentCount = stats.comments;
+
+					const videoSnapshotData = {
+						videoId: dbVideoId,
+						date: today,
+						viewCount,
+						likeCount,
+						commentCount,
+						viewsDelta: prev ? viewCount - prev.viewCount : null,
+						likesDelta: prev ? likeCount - prev.likeCount : null,
+						commentsDelta: prev ? commentCount - prev.commentCount : null,
+					};
 
 					await this.db.trackedVideoSnapshot.upsert({
 						where: {
