@@ -46,8 +46,8 @@ const scannerService = new ScannerService(
 const libraryService = new LibraryService();
 const transcriptionService = new TranscriptionService(
 	libraryService,
-	env.YOUTUBE_API_KEY,
-	env.OPENAI_API_KEY,
+	env.YT_PROXY_URL,
+	env.YT_PROXY_SECRET ?? "",
 );
 
 // Initialize Mastra workflows and connect to scanner

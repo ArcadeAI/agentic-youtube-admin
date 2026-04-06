@@ -35,6 +35,23 @@ services:
         sync: false
       - key: OPENAI_API_KEY
         sync: false
+      - key: YT_PROXY_URL
+        sync: false
+      - key: YT_PROXY_SECRET
+        sync: false
+
+  # YouTube Transcript Proxy (WARP + yt-dlp + Whisper)
+  - type: web
+    name: youtube-admin-yt-proxy
+    runtime: docker
+    dockerfilePath: ./yt-proxy/Dockerfile
+    dockerContext: ./yt-proxy
+    plan: starter
+    envVars:
+      - key: YT_PROXY_SECRET
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
 
   # Web Frontend (Static Site)
   - type: web
