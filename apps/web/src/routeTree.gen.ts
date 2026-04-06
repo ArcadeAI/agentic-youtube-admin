@@ -9,14 +9,21 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as TrackingRouteImport } from './routes/tracking'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ScansRouteImport } from './routes/scans'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as ConsentRouteImport } from './routes/consent'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as TrackingChannelIdRouteImport } from './routes/tracking.$channelId'
 import { Route as ChannelsChannelIdRouteImport } from './routes/channels.$channelId'
 
+const TrackingRoute = TrackingRouteImport.update({
+  id: '/tracking',
+  path: '/tracking',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -47,6 +54,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TrackingChannelIdRoute = TrackingChannelIdRouteImport.update({
+  id: '/$channelId',
+  path: '/$channelId',
+  getParentRoute: () => TrackingRoute,
+} as any)
 const ChannelsChannelIdRoute = ChannelsChannelIdRouteImport.update({
   id: '/channels/$channelId',
   path: '/channels/$channelId',
@@ -60,7 +72,9 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/scans': typeof ScansRoute
   '/settings': typeof SettingsRoute
+  '/tracking': typeof TrackingRouteWithChildren
   '/channels/$channelId': typeof ChannelsChannelIdRoute
+  '/tracking/$channelId': typeof TrackingChannelIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -69,7 +83,9 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/scans': typeof ScansRoute
   '/settings': typeof SettingsRoute
+  '/tracking': typeof TrackingRouteWithChildren
   '/channels/$channelId': typeof ChannelsChannelIdRoute
+  '/tracking/$channelId': typeof TrackingChannelIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -79,7 +95,9 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/scans': typeof ScansRoute
   '/settings': typeof SettingsRoute
+  '/tracking': typeof TrackingRouteWithChildren
   '/channels/$channelId': typeof ChannelsChannelIdRoute
+  '/tracking/$channelId': typeof TrackingChannelIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -90,7 +108,9 @@ export interface FileRouteTypes {
     | '/login'
     | '/scans'
     | '/settings'
+    | '/tracking'
     | '/channels/$channelId'
+    | '/tracking/$channelId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -99,7 +119,9 @@ export interface FileRouteTypes {
     | '/login'
     | '/scans'
     | '/settings'
+    | '/tracking'
     | '/channels/$channelId'
+    | '/tracking/$channelId'
   id:
     | '__root__'
     | '/'
@@ -108,7 +130,9 @@ export interface FileRouteTypes {
     | '/login'
     | '/scans'
     | '/settings'
+    | '/tracking'
     | '/channels/$channelId'
+    | '/tracking/$channelId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -118,11 +142,19 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   ScansRoute: typeof ScansRoute
   SettingsRoute: typeof SettingsRoute
+  TrackingRoute: typeof TrackingRouteWithChildren
   ChannelsChannelIdRoute: typeof ChannelsChannelIdRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/tracking': {
+      id: '/tracking'
+      path: '/tracking'
+      fullPath: '/tracking'
+      preLoaderRoute: typeof TrackingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings': {
       id: '/settings'
       path: '/settings'
@@ -165,6 +197,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/tracking/$channelId': {
+      id: '/tracking/$channelId'
+      path: '/$channelId'
+      fullPath: '/tracking/$channelId'
+      preLoaderRoute: typeof TrackingChannelIdRouteImport
+      parentRoute: typeof TrackingRoute
+    }
     '/channels/$channelId': {
       id: '/channels/$channelId'
       path: '/channels/$channelId'
@@ -175,6 +214,18 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface TrackingRouteChildren {
+  TrackingChannelIdRoute: typeof TrackingChannelIdRoute
+}
+
+const TrackingRouteChildren: TrackingRouteChildren = {
+  TrackingChannelIdRoute: TrackingChannelIdRoute,
+}
+
+const TrackingRouteWithChildren = TrackingRoute._addFileChildren(
+  TrackingRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ConsentRoute: ConsentRoute,
@@ -182,6 +233,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   ScansRoute: ScansRoute,
   SettingsRoute: SettingsRoute,
+  TrackingRoute: TrackingRouteWithChildren,
   ChannelsChannelIdRoute: ChannelsChannelIdRoute,
 }
 export const routeTree = rootRouteImport
