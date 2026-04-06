@@ -39,16 +39,41 @@ export const trackingRoutes = new Elysia({ prefix: "/api/tracking" })
 	.post(
 		"/channels/track",
 		async ({ body }) => {
-			return service.trackChannel(
-				body.userId,
-				body.arcadeUserId,
-				body.channelIdOrHandle,
-			);
+			// Resolve @handle to channel ID if already known in DB
+			let channelId = body.channelIdOrHandle;
+			if (!channelId.startsWith("UC")) {
+				const handle = channelId.startsWith("@") ? channelId : `@${channelId}`;
+				const existing = await prisma.trackedChannel.findFirst({
+					where: {
+						userId: body.userId,
+						customUrl: { equals: handle, mode: "insensitive" },
+					},
+					select: { channelId: true },
+				});
+				if (existing) channelId = existing.channelId;
+			}
+
+			// Direct upsert — metadata populated on next poll
+			const channel = await prisma.trackedChannel.upsert({
+				where: {
+					userId_channelId: {
+						userId: body.userId,
+						channelId,
+					},
+				},
+				update: { isActive: true },
+				create: {
+					userId: body.userId,
+					channelId,
+					channelTitle: channelId,
+					isActive: true,
+				},
+			});
+			return channel;
 		},
 		{
 			body: t.Object({
 				userId: t.String(),
-				arcadeUserId: t.String(),
 				channelIdOrHandle: t.String({ minLength: 1 }),
 			}),
 		},

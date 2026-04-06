@@ -37,13 +37,6 @@ interface TrackedChannel {
 	notes: string | null;
 }
 
-interface SearchResult {
-	channelId: string;
-	title: string;
-	description?: string | null;
-	thumbnail?: string | null;
-}
-
 function TrackingPage() {
 	const { session } = Route.useRouteContext();
 	const userId = session.data?.user.id ?? "";
@@ -52,11 +45,9 @@ function TrackingPage() {
 	const [channels, setChannels] = useState<TrackedChannel[]>([]);
 	const [loading, setLoading] = useState(true);
 
-	// Search state
-	const [searchQuery, setSearchQuery] = useState("");
-	const [searching, setSearching] = useState(false);
-	const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
-	const [trackingId, setTrackingId] = useState<string | null>(null);
+	// Track state
+	const [channelInput, setChannelInput] = useState("");
+	const [tracking, setTracking] = useState(false);
 
 	// Poll state
 	const [pollingId, setPollingId] = useState<string | null>(null);
@@ -78,32 +69,9 @@ function TrackingPage() {
 		fetchChannels();
 	}, [fetchChannels]);
 
-	const handleSearch = async () => {
-		if (!searchQuery.trim()) return;
-		setSearching(true);
-		setSearchResults([]);
-		try {
-			const { data } = await (
-				api.api.tracking.channels.search.post as (
-					body: unknown,
-				) => Promise<{ data: unknown }>
-			)({
-				arcadeUserId,
-				query: searchQuery.trim(),
-			});
-			setSearchResults((data as SearchResult[]) ?? []);
-			if ((data as SearchResult[])?.length === 0) {
-				toast.info("No channels found");
-			}
-		} catch {
-			toast.error("Search failed");
-		} finally {
-			setSearching(false);
-		}
-	};
-
-	const handleTrack = async (channelId: string) => {
-		setTrackingId(channelId);
+	const handleTrack = async () => {
+		if (!channelInput.trim()) return;
+		setTracking(true);
 		try {
 			await (
 				api.api.tracking.channels.track.post as (
@@ -111,17 +79,17 @@ function TrackingPage() {
 				) => Promise<unknown>
 			)({
 				userId,
-				arcadeUserId,
-				channelIdOrHandle: channelId,
+				channelIdOrHandle: channelInput.trim(),
 			});
 			toast.success("Channel tracked");
-			setSearchResults([]);
-			setSearchQuery("");
+			setChannelInput("");
 			await fetchChannels();
 		} catch {
-			toast.error("Failed to track channel");
+			toast.error(
+				"Failed to track channel. Make sure the handle or ID is correct.",
+			);
 		} finally {
-			setTrackingId(null);
+			setTracking(false);
 		}
 	};
 
@@ -159,81 +127,33 @@ function TrackingPage() {
 		}
 	};
 
-	// Check if a search result is already tracked
-	const isTracked = (channelId: string) =>
-		channels.some((c) => c.channelId === channelId);
-
 	return (
 		<div className="container mx-auto max-w-3xl space-y-6 px-4 py-6">
 			<h1 className="font-bold text-2xl">Tracked Channels</h1>
 
-			{/* Search & Track */}
+			{/* Track a Channel */}
 			<Card>
 				<CardHeader>
-					<CardTitle>Search & Track a Channel</CardTitle>
+					<CardTitle>Track a Channel</CardTitle>
 				</CardHeader>
 				<CardContent>
 					<form
 						onSubmit={(e) => {
 							e.preventDefault();
-							handleSearch();
+							handleTrack();
 						}}
 						className="flex gap-2"
 					>
 						<Input
-							placeholder="Channel name, @handle, or YouTube ID"
-							value={searchQuery}
-							onChange={(e) => setSearchQuery(e.target.value)}
+							placeholder="@handle or YouTube channel ID (UC...)"
+							value={channelInput}
+							onChange={(e) => setChannelInput(e.target.value)}
 							className="flex-1"
 						/>
-						<Button type="submit" disabled={searching || !searchQuery.trim()}>
-							{searching ? "Searching..." : "Search"}
+						<Button type="submit" disabled={tracking || !channelInput.trim()}>
+							{tracking ? "Tracking..." : "Track"}
 						</Button>
 					</form>
-
-					{searchResults.length > 0 && (
-						<div className="mt-3 space-y-2">
-							{searchResults.map((result) => (
-								<div
-									key={result.channelId}
-									className="flex items-center justify-between rounded border border-border p-2"
-								>
-									<div className="flex items-center gap-3">
-										{result.thumbnail && (
-											<img
-												src={result.thumbnail}
-												alt={result.title}
-												className="size-8 rounded-full"
-											/>
-										)}
-										<div>
-											<p className="font-medium text-sm">{result.title}</p>
-											{result.description && (
-												<p className="line-clamp-1 text-muted-foreground text-xs">
-													{result.description}
-												</p>
-											)}
-										</div>
-									</div>
-									{isTracked(result.channelId) ? (
-										<span className="text-muted-foreground text-xs">
-											Already tracked
-										</span>
-									) : (
-										<Button
-											size="xs"
-											onClick={() => handleTrack(result.channelId)}
-											disabled={trackingId === result.channelId}
-										>
-											{trackingId === result.channelId
-												? "Tracking..."
-												: "Track"}
-										</Button>
-									)}
-								</div>
-							))}
-						</div>
-					)}
 				</CardContent>
 			</Card>
 
@@ -246,7 +166,7 @@ function TrackingPage() {
 			) : channels.length === 0 ? (
 				<Card>
 					<CardContent className="py-6 text-center text-muted-foreground text-sm">
-						No tracked channels yet. Search for a channel above to start
+						No tracked channels yet. Enter a channel handle above to start
 						tracking.
 					</CardContent>
 				</Card>
