@@ -97,7 +97,7 @@ const app = new Elysia()
 	.use(createSchedulerRoutes(schedulerService, cronManager))
 	.use(createNotificationRoutes(notificationService))
 	.use(createScannerRoutes(scannerService))
-	.use(createLibraryRoutes(libraryService))
+	.use(createLibraryRoutes(libraryService, prisma))
 	.use(createInteractiveSessionRoutes(scannerService, libraryService))
 	// Health check
 	.get("/", () => "OK");

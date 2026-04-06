@@ -17,15 +17,18 @@ export class TranscriptionService {
 	 * Returns early if the video is already transcribed on disk.
 	 */
 	async transcribeVideo(
-		channelYtId: string,
+		channelSlug: string,
 		videoId: string,
 		title: string,
+		publishedAt: Date,
+		description?: string,
 	): Promise<TranscriptionResult> {
 		// Defensive: check if already on disk
 		const existing = await this.libraryService.readTranscription(
-			channelYtId,
+			channelSlug,
 			videoId,
 			title,
+			publishedAt,
 		);
 		if (existing) {
 			return { success: true, method: null };
@@ -52,11 +55,22 @@ export class TranscriptionService {
 		};
 
 		await this.libraryService.writeTranscription(
-			channelYtId,
+			channelSlug,
 			videoId,
 			title,
+			publishedAt,
 			data.text,
 		);
+
+		if (description) {
+			await this.libraryService.writeDescription(
+				channelSlug,
+				videoId,
+				title,
+				publishedAt,
+				description,
+			);
+		}
 
 		return { success: true, method: data.method };
 	}

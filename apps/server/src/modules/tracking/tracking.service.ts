@@ -11,6 +11,7 @@ import {
 } from "@agentic-youtube-admin/arcade/schemas/public-channel";
 import { scoreChannelResponseSchema } from "@agentic-youtube-admin/arcade/schemas/score-channel";
 import { Prisma, type PrismaClient } from "@agentic-youtube-admin/db";
+import { slugify } from "../library/library.service";
 
 export class TrackingService {
 	constructor(private readonly db: PrismaClient) {}
@@ -558,17 +559,21 @@ export class TrackingService {
 		trackedChannelId: string,
 		transcriptionService: {
 			transcribeVideo(
-				channelYtId: string,
+				channelSlug: string,
 				videoId: string,
 				title: string,
+				publishedAt: Date,
+				description?: string,
 			): Promise<{ success: boolean; method: string | null }>;
 		},
 		options?: { videoId?: string; limit?: number },
 	): Promise<{ transcribed: number; skipped: number; failed: number }> {
 		const channel = await this.db.trackedChannel.findUniqueOrThrow({
 			where: { id: trackedChannelId },
-			select: { channelId: true },
+			select: { channelId: true, customUrl: true, channelTitle: true },
 		});
+
+		const channelSlug = slugify(channel.customUrl ?? channel.channelTitle);
 
 		const untranscribed = await this.db.trackedVideo.findMany({
 			where: {
@@ -576,7 +581,13 @@ export class TrackingService {
 				transcribedAt: null,
 				...(options?.videoId ? { videoId: options.videoId } : {}),
 			},
-			select: { id: true, videoId: true, title: true },
+			select: {
+				id: true,
+				videoId: true,
+				title: true,
+				publishedAt: true,
+				description: true,
+			},
 			...(options?.limit ? { take: options.limit } : {}),
 		});
 
@@ -591,9 +602,11 @@ export class TrackingService {
 		for (const video of untranscribed) {
 			try {
 				const result = await transcriptionService.transcribeVideo(
-					channel.channelId,
+					channelSlug,
 					video.videoId,
 					video.title,
+					video.publishedAt,
+					video.description ?? undefined,
 				);
 
 				if (result.success && result.method) {

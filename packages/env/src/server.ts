@@ -14,6 +14,7 @@ export const env = createEnv({
 		OPENAI_API_KEY: z.string().min(1).optional(),
 		YT_PROXY_URL: z.string().min(1),
 		YT_PROXY_SECRET: z.string().min(1).optional(),
+		TRANSCRIPT_ROOT: z.string().optional(),
 		RESEND_API_KEY: z.string().min(1),
 		PASSKEY_RP_ID: z.string().min(1),
 		RESEND_FROM_EMAIL: z.string().default("noreply@yourdomain.com"),

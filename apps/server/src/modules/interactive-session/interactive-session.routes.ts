@@ -1,7 +1,7 @@
 import prisma from "@agentic-youtube-admin/db";
 import { Elysia, t } from "elysia";
 import { authenticateInteractive } from "../../middleware/interactive-auth";
-import type { LibraryService } from "../library/library.service";
+import { type LibraryService, slugify } from "../library/library.service";
 import { NotificationService } from "../notification/notification.service";
 import type {
 	DeliveryMethod,
@@ -33,8 +33,8 @@ function computeDateCoverage(dates: Date[]) {
 	};
 	if (dates.length === 0) return empty;
 
-	const earliest = dates[0]!;
-	const latest = dates[dates.length - 1]!;
+	const earliest = dates[0] as Date;
+	const latest = dates[dates.length - 1] as Date;
 	const msPerDay = 24 * 60 * 60 * 1000;
 	const expectedDays =
 		Math.round((latest.getTime() - earliest.getTime()) / msPerDay) + 1;
@@ -811,13 +811,39 @@ export function createInteractiveSessionRoutes(
 						? params.channelId
 						: await resolveChannelId(params.channelId, "");
 
-					const files = await libraryService.listTranscriptions(ytChannelId);
+					// Look up the channel to derive the channel slug for the filesystem path
+					const channel =
+						(await prisma.youTubeChannel.findFirst({
+							where: { channelId: ytChannelId },
+							select: { customUrl: true, channelTitle: true },
+						})) ??
+						(await prisma.trackedChannel.findFirst({
+							where: { channelId: ytChannelId },
+							select: { customUrl: true, channelTitle: true },
+						}));
+
+					if (!channel) {
+						return { transcriptions: [] };
+					}
+
+					const channelSlug = slugify(
+						channel.customUrl ?? channel.channelTitle,
+					);
+					const files = await libraryService.listTranscriptions(channelSlug);
 					const baseUrl = "/api/library";
 					return {
-						transcriptions: files.map((filename) => ({
-							filename,
-							url: `${baseUrl}/channels/${ytChannelId}/transcriptions/${filename}`,
-						})),
+						transcriptions: files.map((filename) => {
+							// Extract videoId from: {YYYYMMDD}_{titleSlug}_{videoId}-transcript.txt
+							const videoId =
+								filename
+									.replace(/-transcript\.txt$/, "")
+									.split("_")
+									.pop() ?? "";
+							return {
+								filename,
+								url: `${baseUrl}/channels/${ytChannelId}/videos/${videoId}/transcript`,
+							};
+						}),
 					};
 				},
 				{

@@ -17,6 +17,7 @@ import { getVideoRetentionCurveResponseSchema } from "@agentic-youtube-admin/arc
 import { backfillVideoTrafficSourcesResponseSchema } from "@agentic-youtube-admin/arcade/schemas/traffic-sources";
 import { backfillVideoAnalyticsResponseSchema } from "@agentic-youtube-admin/arcade/schemas/video-analytics";
 import type { PrismaClient } from "@agentic-youtube-admin/db";
+import { slugify } from "../library/library.service";
 
 export class YouTubeService {
 	constructor(private prisma: PrismaClient) {}
@@ -556,17 +557,21 @@ export class YouTubeService {
 		channelDbId: string,
 		transcriptionService: {
 			transcribeVideo(
-				channelYtId: string,
+				channelSlug: string,
 				videoId: string,
 				title: string,
+				publishedAt: Date,
+				description?: string,
 			): Promise<{ success: boolean; method: string | null }>;
 		},
 		options?: { videoId?: string; limit?: number },
 	): Promise<{ transcribed: number; skipped: number; failed: number }> {
 		const channel = await this.prisma.youTubeChannel.findUniqueOrThrow({
 			where: { id: channelDbId },
-			select: { channelId: true },
+			select: { channelId: true, customUrl: true, channelTitle: true },
 		});
+
+		const channelSlug = slugify(channel.customUrl ?? channel.channelTitle);
 
 		const untranscribed = await this.prisma.video.findMany({
 			where: {
@@ -574,7 +579,13 @@ export class YouTubeService {
 				transcribedAt: null,
 				...(options?.videoId ? { videoId: options.videoId } : {}),
 			},
-			select: { id: true, videoId: true, title: true },
+			select: {
+				id: true,
+				videoId: true,
+				title: true,
+				publishedAt: true,
+				description: true,
+			},
 			...(options?.limit ? { take: options.limit } : {}),
 		});
 
@@ -589,9 +600,11 @@ export class YouTubeService {
 		for (const video of untranscribed) {
 			try {
 				const result = await transcriptionService.transcribeVideo(
-					channel.channelId,
+					channelSlug,
 					video.videoId,
 					video.title,
+					video.publishedAt,
+					video.description ?? undefined,
 				);
 
 				if (result.success && result.method) {
