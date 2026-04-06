@@ -322,6 +322,82 @@ export class ScannerService {
 		return { processId: scanRun.id };
 	}
 
+	/**
+	 * Start transcription in the background. Returns the ScanRun ID immediately.
+	 */
+	async startTranscriptionAsync(
+		userId: string,
+		channelDbId: string | null,
+		options?: { videoId?: string; limit?: number },
+	): Promise<{ processId: string }> {
+		if (!this.mastra) throw new Error("Mastra not initialized");
+
+		const scanRun = await this.schedulerService.createScanRun("transcription", {
+			userId,
+		});
+
+		const workflow = this.mastra.getWorkflow("transcription");
+		const run = await workflow.createRun();
+
+		activeRuns.set(scanRun.id, {
+			cancel: () => run.cancel(),
+			workflowName: "transcription",
+		});
+
+		const scope = channelDbId ? "owned" : "all";
+
+		run
+			.start({
+				inputData: {
+					userId,
+					channelDbId: channelDbId ?? undefined,
+					scope,
+					videoId: options?.videoId,
+					limit: options?.limit,
+				},
+			})
+			.then(async (result) => {
+				activeRuns.delete(scanRun.id);
+				const status = result.status === "success" ? "success" : "error";
+				const error =
+					result.status !== "success"
+						? `Workflow ${result.status}: ${"error" in result ? result.error : "unknown"}`
+						: undefined;
+				await this.schedulerService.completeScanRun(
+					scanRun.id,
+					status as "success" | "error",
+					result.status === "success" ? result.result : undefined,
+					error,
+				);
+				await this.notifyScanComplete(
+					userId,
+					"transcription",
+					channelDbId,
+					result.status === "success" ? result.result : undefined,
+					error,
+				);
+			})
+			.catch(async (err) => {
+				activeRuns.delete(scanRun.id);
+				const errorMsg = err instanceof Error ? err.message : String(err);
+				await this.schedulerService.completeScanRun(
+					scanRun.id,
+					"error",
+					undefined,
+					errorMsg,
+				);
+				await this.notifyScanComplete(
+					userId,
+					"transcription",
+					channelDbId,
+					undefined,
+					errorMsg,
+				);
+			});
+
+		return { processId: scanRun.id };
+	}
+
 	async getProcessStatus(processId: string) {
 		const scanRun = await this.schedulerService.getScanRun(processId);
 		if (!scanRun) return null;

@@ -1,6 +1,7 @@
 import prisma from "@agentic-youtube-admin/db";
 import { Elysia, t } from "elysia";
 import { authenticateInteractive } from "../../middleware/interactive-auth";
+import type { LibraryService } from "../library/library.service";
 import { NotificationService } from "../notification/notification.service";
 import type {
 	DeliveryMethod,
@@ -91,7 +92,10 @@ async function resolveChannelId(
 	throw new Error(`Channel not found for: ${idOrHandle}`);
 }
 
-export function createInteractiveSessionRoutes(scannerService: ScannerService) {
+export function createInteractiveSessionRoutes(
+	scannerService: ScannerService,
+	libraryService?: LibraryService,
+) {
 	return (
 		new Elysia({
 			prefix: "/api/v1/interactive",
@@ -375,6 +379,43 @@ export function createInteractiveSessionRoutes(scannerService: ScannerService) {
 					throw err;
 				}
 			})
+			.post(
+				"/processes/transcription",
+				async ({ request, body }) => {
+					const auth = await authenticateInteractive(request);
+
+					let channelDbId: string | null = null;
+					if (body.channel_id) {
+						const ytChannelId = await resolveChannelId(
+							body.channel_id,
+							auth.userId,
+						);
+						const channel = await prisma.youTubeChannel.findFirst({
+							where: { userId: auth.userId, channelId: ytChannelId },
+							select: { id: true },
+						});
+						if (channel) {
+							channelDbId = channel.id;
+						}
+					}
+
+					return scannerService.startTranscriptionAsync(
+						auth.userId,
+						channelDbId,
+						{
+							videoId: body.video_id ?? undefined,
+							limit: body.limit ?? undefined,
+						},
+					);
+				},
+				{
+					body: t.Object({
+						channel_id: t.Optional(t.String()),
+						video_id: t.Optional(t.String()),
+						limit: t.Optional(t.Number()),
+					}),
+				},
+			)
 			// ── Notifications ────────────────────────────────────────────────────
 			.get(
 				"/notifications",
@@ -755,6 +796,32 @@ export function createInteractiveSessionRoutes(scannerService: ScannerService) {
 				},
 				{
 					params: t.Object({ videoId: t.String() }),
+				},
+			)
+			// ── Transcriptions ───────────────────────────────────────────────────
+			.get(
+				"/channels/:channelId/transcriptions",
+				async ({ request, params }) => {
+					await authenticateInteractive(request);
+					if (!libraryService) {
+						return { transcriptions: [] };
+					}
+
+					const ytChannelId = params.channelId.startsWith("UC")
+						? params.channelId
+						: await resolveChannelId(params.channelId, "");
+
+					const files = await libraryService.listTranscriptions(ytChannelId);
+					const baseUrl = "/api/library";
+					return {
+						transcriptions: files.map((filename) => ({
+							filename,
+							url: `${baseUrl}/channels/${ytChannelId}/transcriptions/${filename}`,
+						})),
+					};
+				},
+				{
+					params: t.Object({ channelId: t.String() }),
 				},
 			)
 	);

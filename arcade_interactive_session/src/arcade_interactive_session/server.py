@@ -16,7 +16,7 @@ import httpx
 from arcade_mcp_server import Context, MCPApp
 from arcade_mcp_server.auth import OAuth2
 
-app = MCPApp(name="arcade_interactive_session", version="1.8.0", log_level="DEBUG")
+app = MCPApp(name="arcade_interactive_session", version="1.9.0", log_level="DEBUG")
 
 # The provider_id must match the OAuth2 provider configured in the user's Arcade account
 YT_ADMIN_AUTH = OAuth2(
@@ -172,9 +172,9 @@ async def start_backfill(
 )
 async def get_process_status(
     context: Context,
-    process_id: Annotated[str, "The process ID returned by start_backfill"],
+    process_id: Annotated[str, "The process ID returned by start_backfill or start_transcription"],
 ) -> dict:
-    """Check the status of a running or completed process.
+    """Check the status of a running or completed process (backfill, transcription, etc.).
 
     Returns the process status (running, success, error, canceled),
     start/completion times, and the result or error message.
@@ -223,6 +223,52 @@ async def run_tracked_poll(context: Context) -> dict:
     scored, and any errors encountered.
     """
     return await _request(context, "POST", "/api/v1/interactive/processes/tracked-poll")
+
+
+@app.tool(
+    requires_auth=YT_ADMIN_AUTH,
+    requires_secrets=["ELYSIA_BASE_URL"],
+)
+async def start_transcription(
+    context: Context,
+    channel_id_or_handle: Annotated[Optional[str], "YouTube channel ID (UC...) or @handle. If omitted, transcribes all channels."] = None,
+    video_id: Annotated[Optional[str], "Specific YouTube video ID to transcribe. If omitted, transcribes all untranscribed videos."] = None,
+    limit: Annotated[Optional[int], "Maximum number of videos to transcribe. Useful for testing."] = None,
+) -> dict:
+    """Start video transcription as a background process.
+
+    Fetches YouTube captions when available, or downloads audio and transcribes
+    with OpenAI Whisper as a fallback. Each video is only transcribed once.
+
+    This is a long-running process. Returns a process ID immediately.
+    Use get_process_status to check progress, cancel_process to abort,
+    or list_active_processes to see all running processes.
+    """
+    body: dict[str, str | int] = {}
+    if channel_id_or_handle:
+        body["channel_id"] = channel_id_or_handle
+    if video_id:
+        body["video_id"] = video_id
+    if limit is not None:
+        body["limit"] = limit
+    return await _request(context, "POST", "/api/v1/interactive/processes/transcription", json=body)
+
+
+@app.tool(
+    requires_auth=YT_ADMIN_AUTH,
+    requires_secrets=["ELYSIA_BASE_URL"],
+)
+async def get_transcriptions(
+    context: Context,
+    channel_id_or_handle: Annotated[str, "YouTube channel ID (UC...) or @handle"],
+) -> dict:
+    """List available transcriptions for a channel.
+
+    Returns a list of transcription files with URLs. Each URL points to
+    a markdown file containing the full transcription text. Use your
+    fetch tool to download the content of individual transcriptions.
+    """
+    return await _request(context, "GET", f"/api/v1/interactive/channels/{channel_id_or_handle}/transcriptions")
 
 
 # ── Notification Tools ───────────────────────────────────────────────────────

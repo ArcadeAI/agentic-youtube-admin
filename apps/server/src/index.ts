@@ -98,7 +98,7 @@ const app = new Elysia()
 	.use(createNotificationRoutes(notificationService))
 	.use(createScannerRoutes(scannerService))
 	.use(createLibraryRoutes(libraryService))
-	.use(createInteractiveSessionRoutes(scannerService))
+	.use(createInteractiveSessionRoutes(scannerService, libraryService))
 	// Health check
 	.get("/", () => "OK");
 
