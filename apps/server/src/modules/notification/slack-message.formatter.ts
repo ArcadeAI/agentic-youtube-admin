@@ -58,6 +58,28 @@ export function formatTrackedPollComplete(result: {
 	return lines.join("\n");
 }
 
+export function formatTranscriptionComplete(
+	result: {
+		ownedTranscribed: number;
+		trackedTranscribed: number;
+		errors: string[];
+	},
+	channelTitle?: string,
+): string {
+	const channel = channelTitle ? `\nChannel: ${channelTitle}` : "";
+	const lines = [
+		"*Transcription Complete*",
+		channel,
+		`- Owned videos transcribed: ${result.ownedTranscribed}`,
+		`- Tracked videos transcribed: ${result.trackedTranscribed}`,
+	];
+	if (result.errors.length > 0) {
+		lines.push(`- Errors: ${result.errors.slice(0, 3).join(", ")}`);
+	}
+	lines.push(`Completed at ${timestamp()} UTC`);
+	return lines.filter(Boolean).join("\n");
+}
+
 export function formatScanError(
 	scanType: string,
 	errorMessage: string,

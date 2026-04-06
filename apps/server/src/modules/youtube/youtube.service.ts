@@ -550,6 +550,72 @@ export class YouTubeService {
 		});
 	}
 
+	// --------------- Transcription ---------------
+
+	async transcribeVideos(
+		channelDbId: string,
+		transcriptionService: {
+			transcribeVideo(
+				channelYtId: string,
+				videoId: string,
+				title: string,
+			): Promise<{ success: boolean; method: string | null }>;
+		},
+	): Promise<{ transcribed: number; skipped: number; failed: number }> {
+		const channel = await this.prisma.youTubeChannel.findUniqueOrThrow({
+			where: { id: channelDbId },
+			select: { channelId: true },
+		});
+
+		const untranscribed = await this.prisma.video.findMany({
+			where: { channelId: channelDbId, transcribedAt: null },
+			select: { id: true, videoId: true, title: true },
+		});
+
+		if (untranscribed.length === 0) {
+			return { transcribed: 0, skipped: 0, failed: 0 };
+		}
+
+		let transcribed = 0;
+		let skipped = 0;
+		let failed = 0;
+
+		for (const video of untranscribed) {
+			try {
+				const result = await transcriptionService.transcribeVideo(
+					channel.channelId,
+					video.videoId,
+					video.title,
+				);
+
+				if (result.success && result.method) {
+					await this.prisma.video.update({
+						where: { id: video.id },
+						data: { transcribedAt: new Date() },
+					});
+					transcribed++;
+				} else if (result.success && !result.method) {
+					// Already on disk, mark as transcribed
+					await this.prisma.video.update({
+						where: { id: video.id },
+						data: { transcribedAt: new Date() },
+					});
+					skipped++;
+				} else {
+					failed++;
+				}
+			} catch (err) {
+				console.error(
+					`Failed to transcribe video ${video.videoId}:`,
+					err instanceof Error ? err.message : err,
+				);
+				failed++;
+			}
+		}
+
+		return { transcribed, skipped, failed };
+	}
+
 	// --------------- Private helpers ---------------
 
 	private async buildVideoIdMap(

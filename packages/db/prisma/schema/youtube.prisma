@@ -41,6 +41,7 @@ model Video {
   currentViews          BigInt    @default(0)
   currentLikes          Int       @default(0)
   currentComments       Int       @default(0)
+  transcribedAt         DateTime?
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 

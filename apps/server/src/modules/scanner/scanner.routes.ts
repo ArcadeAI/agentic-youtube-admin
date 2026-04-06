@@ -108,5 +108,38 @@ export function createScannerRoutes(service: ScannerService) {
 					userId: t.String(),
 				}),
 			},
+		)
+		.post(
+			"/transcribe",
+			async ({ body }) => {
+				try {
+					const result = await service.runTranscription(
+						body.userId,
+						body.channelId ?? null,
+					);
+					await service.notifyScanComplete(
+						body.userId,
+						"transcription",
+						body.channelId ?? null,
+						result,
+					);
+					return result;
+				} catch (err) {
+					await service.notifyScanComplete(
+						body.userId,
+						"transcription",
+						body.channelId ?? null,
+						undefined,
+						err instanceof Error ? err.message : String(err),
+					);
+					throw err;
+				}
+			},
+			{
+				body: t.Object({
+					userId: t.String(),
+					channelId: t.Optional(t.String()),
+				}),
+			},
 		);
 }

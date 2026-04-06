@@ -10,6 +10,8 @@ export const env = createEnv({
 		CORS_ORIGIN: z.url(),
 		ARCADE_API_KEY: z.string().min(1),
 		INTERACTIVE_API_KEY: z.string().min(1).optional(),
+		YOUTUBE_API_KEY: z.string().min(1),
+		OPENAI_API_KEY: z.string().min(1),
 		RESEND_API_KEY: z.string().min(1),
 		PASSKEY_RP_ID: z.string().min(1),
 		RESEND_FROM_EMAIL: z.string().default("noreply@yourdomain.com"),

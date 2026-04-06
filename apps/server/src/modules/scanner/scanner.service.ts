@@ -7,6 +7,7 @@ import {
 	formatDailySyncComplete,
 	formatScanError,
 	formatTrackedPollComplete,
+	formatTranscriptionComplete,
 } from "../notification/slack-message.formatter";
 import type { SchedulerService } from "../scheduler/scheduler.service";
 
@@ -81,6 +82,9 @@ export class ScannerService {
 				case "tracked_daily_poll":
 					result = await this.runTrackedDailyPoll(userId, arcadeUserId);
 					break;
+				case "transcription":
+					result = await this.runTranscription(userId, channelId);
+					break;
 				default:
 					throw new Error(`Unknown scan type: ${scanType}`);
 			}
@@ -92,6 +96,20 @@ export class ScannerService {
 			);
 			await this.schedulerService.updateScheduleLastRun(scheduleId, "success");
 			await this.notifyScanComplete(userId, scanType, channelId, result);
+
+			// Auto-trigger transcription after scans that discover videos
+			if (
+				["owned_backfill", "owned_daily_sync", "tracked_daily_poll"].includes(
+					scanType,
+				)
+			) {
+				this.runTranscription(userId, channelId).catch((err) =>
+					console.error(
+						"Post-scan transcription failed:",
+						err instanceof Error ? err.message : err,
+					),
+				);
+			}
 		} catch (err) {
 			const errorMsg = err instanceof Error ? err.message : String(err);
 			await this.schedulerService.completeScanRun(
@@ -175,6 +193,31 @@ export class ScannerService {
 		}
 		throw new Error(
 			`Tracked poll workflow failed: ${result.status === "failed" ? result.error : result.status}`,
+		);
+	}
+
+	async runTranscription(userId: string, channelId: string | null) {
+		if (!this.mastra) throw new Error("Mastra not initialized");
+
+		const workflow = this.mastra.getWorkflow("transcription");
+		const run = await workflow.createRun();
+
+		// Determine scope: if channelId is provided, transcribe just that channel
+		const scope = channelId ? "owned" : "all";
+
+		const result = await run.start({
+			inputData: {
+				userId,
+				channelDbId: channelId ?? undefined,
+				scope,
+			},
+		});
+
+		if (result.status === "success") {
+			return result.result;
+		}
+		throw new Error(
+			`Transcription workflow failed: ${result.status === "failed" ? result.error : result.status}`,
 		);
 	}
 
@@ -386,6 +429,15 @@ export class ScannerService {
 						channelsFailed: number;
 						errors: string[];
 					},
+				);
+			case "transcription":
+				return formatTranscriptionComplete(
+					result as {
+						ownedTranscribed: number;
+						trackedTranscribed: number;
+						errors: string[];
+					},
+					channelTitle,
 				);
 			default:
 				return `*Scan Complete: ${scanType.replace(/_/g, " ")}*`;

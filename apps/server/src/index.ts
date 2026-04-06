@@ -6,7 +6,11 @@ import { Elysia } from "elysia";
 import { createMastraInstance } from "./mastra";
 import { arcadeAuthRoutes } from "./modules/arcade-auth";
 import { createInteractiveSessionRoutes } from "./modules/interactive-session";
-import { createLibraryRoutes, LibraryService } from "./modules/library";
+import {
+	createLibraryRoutes,
+	LibraryService,
+	TranscriptionService,
+} from "./modules/library";
 import {
 	createNotificationRoutes,
 	createSlackAuthRoutes,
@@ -40,9 +44,19 @@ const scannerService = new ScannerService(
 	slackDeliveryService,
 );
 const libraryService = new LibraryService();
+const transcriptionService = new TranscriptionService(
+	libraryService,
+	env.YOUTUBE_API_KEY,
+	env.OPENAI_API_KEY,
+);
 
 // Initialize Mastra workflows and connect to scanner
-const mastra = createMastraInstance(youtubeService, trackingService, prisma);
+const mastra = createMastraInstance(
+	youtubeService,
+	trackingService,
+	prisma,
+	transcriptionService,
+);
 scannerService.setMastra(mastra);
 
 // Initialize cron manager

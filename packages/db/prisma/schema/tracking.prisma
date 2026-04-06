@@ -56,6 +56,7 @@ model TrackedVideo {
   categoryId            String?
   liveBroadcastContent  String?
   contentType           String?
+  transcribedAt         DateTime?
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 
