@@ -20,6 +20,7 @@ const SCAN_TYPES = [
 	{ value: "owned_backfill", label: "Owned channel backfill" },
 	{ value: "owned_daily_sync", label: "Owned channel daily sync" },
 	{ value: "tracked_daily_poll", label: "Tracked channel daily poll" },
+	{ value: "transcription", label: "Transcribe videos" },
 ] as const;
 
 const CRON_PRESETS = [
@@ -39,6 +40,10 @@ function needsChannel(scanType: string) {
 	return scanType === "owned_backfill" || scanType === "owned_daily_sync";
 }
 
+function supportsChannel(scanType: string) {
+	return needsChannel(scanType) || scanType === "transcription";
+}
+
 export const Route = createFileRoute("/scans")({
 	component: ScansPage,
 	beforeLoad: async () => {
@@ -54,6 +59,19 @@ interface Channel {
 	id: string;
 	channelId: string;
 	channelTitle: string;
+}
+
+interface VideoOption {
+	id: string;
+	videoId: string;
+	title: string;
+	transcribedAt: string | null;
+}
+
+interface TranscriptionResult {
+	ownedTranscribed: number;
+	trackedTranscribed: number;
+	errors: string[];
 }
 
 interface Schedule {
@@ -89,7 +107,14 @@ function ScansPage() {
 		d.setDate(d.getDate() - 1);
 		return d.toISOString().split("T")[0] as string;
 	});
+	const [selectedVideoId, setSelectedVideoId] = useState("");
+	const [limit, setLimit] = useState("");
 	const [running, setRunning] = useState(false);
+	const [videos, setVideos] = useState<VideoOption[]>([]);
+	const [videosLoading, setVideosLoading] = useState(false);
+	const [lastResult, setLastResult] = useState<TranscriptionResult | null>(
+		null,
+	);
 
 	// Schedules state
 	const [schedules, setSchedules] = useState<Schedule[]>([]);
@@ -142,6 +167,39 @@ function ScansPage() {
 		}
 	}, [channels, selectedChannel, newChannelId]);
 
+	// Fetch videos when transcription mode + channel selected
+	useEffect(() => {
+		if (scanType !== "transcription" || !selectedChannel) {
+			setVideos([]);
+			return;
+		}
+		let cancelled = false;
+		const fetchVideos = async () => {
+			setVideosLoading(true);
+			try {
+				const { data } = await (
+					api.api.youtube.channels({ channelId: selectedChannel }).videos
+						.get as (opts: unknown) => Promise<{ data: unknown }>
+				)({ query: { page: "1", pageSize: "200" } });
+				if (!cancelled) {
+					const result = data as {
+						data: VideoOption[];
+						pagination: unknown;
+					};
+					setVideos(result.data ?? []);
+				}
+			} catch {
+				if (!cancelled) setVideos([]);
+			} finally {
+				if (!cancelled) setVideosLoading(false);
+			}
+		};
+		fetchVideos();
+		return () => {
+			cancelled = true;
+		};
+	}, [scanType, selectedChannel]);
+
 	const channelName = (id: string | null) =>
 		channels.find((c) => c.id === id)?.channelTitle ?? id ?? "—";
 
@@ -182,6 +240,20 @@ function ScansPage() {
 						) => Promise<unknown>
 					)({ userId });
 					break;
+				case "transcription": {
+					const { data: txResult } = (await (
+						api.api.scanner.transcribe.post as (
+							body: unknown,
+						) => Promise<{ data: unknown }>
+					)({
+						userId,
+						...(selectedChannel ? { channelId: selectedChannel } : {}),
+						...(selectedVideoId ? { videoId: selectedVideoId } : {}),
+						...(limit ? { limit: Number(limit) } : {}),
+					})) as { data: TranscriptionResult };
+					setLastResult(txResult);
+					break;
+				}
 			}
 			toast.success(`${scanTypeLabel(scanType)} completed`);
 		} catch {
@@ -283,9 +355,14 @@ function ScansPage() {
 							</select>
 						</div>
 
-						{needsChannel(scanType) && (
+						{supportsChannel(scanType) && (
 							<div className="space-y-1">
-								<Label htmlFor="channel">Channel</Label>
+								<Label htmlFor="channel">
+									Channel
+									{scanType === "transcription"
+										? " (optional — all if blank)"
+										: ""}
+								</Label>
 								{channelsLoading ? (
 									<Skeleton className="h-9 w-full" />
 								) : channels.length === 0 ? (
@@ -299,12 +376,62 @@ function ScansPage() {
 										onChange={(e) => setSelectedChannel(e.target.value)}
 										className="w-full rounded border border-border bg-transparent px-3 py-2 text-sm"
 									>
+										{scanType === "transcription" && (
+											<option value="">All channels</option>
+										)}
 										{channels.map((c) => (
 											<option key={c.id} value={c.id}>
 												{c.channelTitle}
 											</option>
 										))}
 									</select>
+								)}
+							</div>
+						)}
+
+						{scanType === "transcription" && selectedChannel && (
+							<div className="space-y-3">
+								<div className="space-y-1">
+									<Label htmlFor="video-picker">
+										Video (optional — all untranscribed if blank)
+									</Label>
+									{videosLoading ? (
+										<Skeleton className="h-9 w-full" />
+									) : (
+										<select
+											id="video-picker"
+											value={selectedVideoId}
+											onChange={(e) => setSelectedVideoId(e.target.value)}
+											className="w-full rounded border border-border bg-transparent px-3 py-2 text-sm"
+										>
+											<option value="">
+												All untranscribed (
+												{videos.filter((v) => !v.transcribedAt).length} of{" "}
+												{videos.length})
+											</option>
+											{videos.map((v) => (
+												<option key={v.videoId} value={v.videoId}>
+													{v.transcribedAt ? "\u2713 " : ""}
+													{v.title}
+												</option>
+											))}
+										</select>
+									)}
+								</div>
+								{!selectedVideoId && (
+									<div className="space-y-1">
+										<Label htmlFor="limit">
+											Max videos to transcribe (optional)
+										</Label>
+										<Input
+											id="limit"
+											type="number"
+											placeholder="e.g. 3"
+											min="1"
+											value={limit}
+											onChange={(e) => setLimit(e.target.value)}
+										/>
+									</div>
 								)}
 							</div>
 						)}
@@ -337,11 +464,56 @@ function ScansPage() {
 					<Button
 						onClick={handleRunScan}
 						disabled={running || (needsChannel(scanType) && !selectedChannel)}
+						variant={scanType === "transcription" ? "secondary" : "default"}
 					>
 						{running ? "Running..." : "Run Now"}
 					</Button>
 				</CardFooter>
 			</Card>
+
+			{/* Transcription Result */}
+			{lastResult && (
+				<Card>
+					<CardHeader>
+						<CardTitle className="flex items-center justify-between">
+							<span>Transcription Result</span>
+							<Button
+								variant="ghost"
+								size="xs"
+								onClick={() => setLastResult(null)}
+							>
+								Dismiss
+							</Button>
+						</CardTitle>
+					</CardHeader>
+					<CardContent>
+						<div className="space-y-1 text-sm">
+							<p>
+								Owned videos transcribed:{" "}
+								<span className="font-medium">
+									{lastResult.ownedTranscribed}
+								</span>
+							</p>
+							<p>
+								Tracked videos transcribed:{" "}
+								<span className="font-medium">
+									{lastResult.trackedTranscribed}
+								</span>
+							</p>
+							{lastResult.errors.length > 0 && (
+								<div className="mt-2 space-y-1">
+									<p className="font-medium text-destructive">Errors:</p>
+									{lastResult.errors.map((err) => (
+										<p key={err} className="text-destructive text-xs">
+											{err}
+										</p>
+									))}
+								</div>
+							)}
+						</div>
+					</CardContent>
+				</Card>
+			)}
 
 			{/* Scheduled Scans */}
 			<div className="space-y-3">

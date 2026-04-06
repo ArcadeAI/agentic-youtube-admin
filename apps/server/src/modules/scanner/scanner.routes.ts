@@ -116,6 +116,10 @@ export function createScannerRoutes(service: ScannerService) {
 					const result = await service.runTranscription(
 						body.userId,
 						body.channelId ?? null,
+						{
+							videoId: body.videoId,
+							limit: body.limit,
+						},
 					);
 					await service.notifyScanComplete(
 						body.userId,
@@ -139,6 +143,8 @@ export function createScannerRoutes(service: ScannerService) {
 				body: t.Object({
 					userId: t.String(),
 					channelId: t.Optional(t.String()),
+					videoId: t.Optional(t.String()),
+					limit: t.Optional(t.Number()),
 				}),
 			},
 		);

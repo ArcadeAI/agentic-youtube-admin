@@ -196,7 +196,11 @@ export class ScannerService {
 		);
 	}
 
-	async runTranscription(userId: string, channelId: string | null) {
+	async runTranscription(
+		userId: string,
+		channelId: string | null,
+		options?: { videoId?: string; limit?: number },
+	) {
 		if (!this.mastra) throw new Error("Mastra not initialized");
 
 		const workflow = this.mastra.getWorkflow("transcription");
@@ -210,6 +214,8 @@ export class ScannerService {
 				userId,
 				channelDbId: channelId ?? undefined,
 				scope,
+				videoId: options?.videoId,
+				limit: options?.limit,
 			},
 		});
 

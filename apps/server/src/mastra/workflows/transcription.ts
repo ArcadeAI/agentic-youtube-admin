@@ -10,6 +10,8 @@ const transcriptionInputSchema = z.object({
 	channelDbId: z.string().optional(),
 	trackedChannelId: z.string().optional(),
 	scope: z.enum(["owned", "tracked", "all"]),
+	videoId: z.string().optional(),
+	limit: z.number().optional(),
 });
 
 const afterOwnedSchema = z.object({
@@ -17,6 +19,8 @@ const afterOwnedSchema = z.object({
 	channelDbId: z.string().optional(),
 	trackedChannelId: z.string().optional(),
 	scope: z.enum(["owned", "tracked", "all"]),
+	videoId: z.string().optional(),
+	limit: z.number().optional(),
 	ownedTranscribed: z.number(),
 	errors: z.array(z.string()),
 });
@@ -38,7 +42,7 @@ export function createTranscriptionWorkflow(
 		inputSchema: transcriptionInputSchema,
 		outputSchema: afterOwnedSchema,
 		execute: async ({ inputData }) => {
-			const { userId, channelDbId, scope } = inputData;
+			const { userId, channelDbId, scope, videoId, limit } = inputData;
 
 			if (scope === "tracked") {
 				return { ...inputData, ownedTranscribed: 0, errors: [] };
@@ -59,6 +63,7 @@ export function createTranscriptionWorkflow(
 					const result = await youtubeService.transcribeVideos(
 						channel.id,
 						transcriptionService,
+						{ videoId, limit },
 					);
 					ownedTranscribed += result.transcribed;
 					if (result.failed > 0) {
@@ -80,8 +85,15 @@ export function createTranscriptionWorkflow(
 		inputSchema: afterOwnedSchema,
 		outputSchema: transcriptionOutputSchema,
 		execute: async ({ inputData }) => {
-			const { userId, trackedChannelId, scope, ownedTranscribed, errors } =
-				inputData;
+			const {
+				userId,
+				trackedChannelId,
+				scope,
+				videoId,
+				limit,
+				ownedTranscribed,
+				errors,
+			} = inputData;
 
 			if (scope === "owned") {
 				return { ownedTranscribed, trackedTranscribed: 0, errors };
@@ -101,6 +113,7 @@ export function createTranscriptionWorkflow(
 					const result = await trackingService.transcribeTrackedVideos(
 						channel.id,
 						transcriptionService,
+						{ videoId, limit },
 					);
 					trackedTranscribed += result.transcribed;
 					if (result.failed > 0) {

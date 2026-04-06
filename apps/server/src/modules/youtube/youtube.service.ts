@@ -561,6 +561,7 @@ export class YouTubeService {
 				title: string,
 			): Promise<{ success: boolean; method: string | null }>;
 		},
+		options?: { videoId?: string; limit?: number },
 	): Promise<{ transcribed: number; skipped: number; failed: number }> {
 		const channel = await this.prisma.youTubeChannel.findUniqueOrThrow({
 			where: { id: channelDbId },
@@ -568,8 +569,13 @@ export class YouTubeService {
 		});
 
 		const untranscribed = await this.prisma.video.findMany({
-			where: { channelId: channelDbId, transcribedAt: null },
+			where: {
+				channelId: channelDbId,
+				transcribedAt: null,
+				...(options?.videoId ? { videoId: options.videoId } : {}),
+			},
 			select: { id: true, videoId: true, title: true },
+			...(options?.limit ? { take: options.limit } : {}),
 		});
 
 		if (untranscribed.length === 0) {

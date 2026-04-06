@@ -563,6 +563,7 @@ export class TrackingService {
 				title: string,
 			): Promise<{ success: boolean; method: string | null }>;
 		},
+		options?: { videoId?: string; limit?: number },
 	): Promise<{ transcribed: number; skipped: number; failed: number }> {
 		const channel = await this.db.trackedChannel.findUniqueOrThrow({
 			where: { id: trackedChannelId },
@@ -570,8 +571,13 @@ export class TrackingService {
 		});
 
 		const untranscribed = await this.db.trackedVideo.findMany({
-			where: { channelId: trackedChannelId, transcribedAt: null },
+			where: {
+				channelId: trackedChannelId,
+				transcribedAt: null,
+				...(options?.videoId ? { videoId: options.videoId } : {}),
+			},
 			select: { id: true, videoId: true, title: true },
+			...(options?.limit ? { take: options.limit } : {}),
 		});
 
 		if (untranscribed.length === 0) {
