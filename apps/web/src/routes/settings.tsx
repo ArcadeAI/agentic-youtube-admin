@@ -79,7 +79,6 @@ function SettingsPage() {
 	const [slackUser, setSlackUser] = useState<{
 		name?: string;
 		username?: string;
-		team_name?: string;
 	} | null>(null);
 
 	// Notification config state
@@ -152,11 +151,10 @@ function SettingsPage() {
 					authId,
 				});
 				if (data && typeof data === "object" && "user" in data) {
-					const user = data.user as Record<string, string>;
+					const user = data.user as Record<string, unknown>;
 					setSlackUser({
-						name: user.name,
-						username: user.username,
-						team_name: user.team_name,
+						name: (user.display_name ?? user.real_name) as string | undefined,
+						username: user.username as string | undefined,
 					});
 				}
 				setSlackConnected(true);
@@ -341,7 +339,6 @@ function SettingsPage() {
 							{slackUser && (
 								<span className="text-muted-foreground">
 									as {slackUser.name ?? slackUser.username}
-									{slackUser.team_name && ` (${slackUser.team_name})`}
 								</span>
 							)}
 						</div>

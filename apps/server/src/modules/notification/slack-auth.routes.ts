@@ -139,14 +139,12 @@ export function createSlackAuthRoutes() {
 				return { channels: [], error: result.error.message };
 			}
 
-			const data = result.data;
-			const raw = Array.isArray(data) ? data : data.channels;
-			const channels = raw
-				.filter((c) => !c.is_archived)
+			const channels = result.data.conversations
+				.filter((c) => !c.is_archived && c.name != null)
 				.map((c) => ({
 					id: c.id,
-					name: c.name,
-					isPrivate: c.is_private ?? false,
+					name: c.name as string,
+					isPrivate: c.conversation_type === "private_channel",
 				}));
 
 			return { channels };
