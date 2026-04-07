@@ -35,11 +35,30 @@ export class TranscriptionService {
 		}
 
 		const url = `${this.proxyUrl}/transcript/${videoId}`;
-		const response = await fetch(url, {
-			headers: this.proxySecret
-				? { Authorization: `Bearer ${this.proxySecret}` }
-				: {},
-		});
+
+		// Whisper transcription of long videos can take several minutes.
+		// 15 minutes covers yt-dlp download (up to 5 min) + Whisper processing.
+		const controller = new AbortController();
+		const timeoutId = setTimeout(() => controller.abort(), 15 * 60 * 1000);
+
+		let response: Response;
+		try {
+			response = await fetch(url, {
+				headers: this.proxySecret
+					? { Authorization: `Bearer ${this.proxySecret}` }
+					: {},
+				signal: controller.signal,
+			});
+		} catch (err) {
+			if (err instanceof Error && err.name === "AbortError") {
+				throw new Error(
+					`Transcript proxy timed out for ${videoId} after 15 minutes`,
+				);
+			}
+			throw err;
+		} finally {
+			clearTimeout(timeoutId);
+		}
 
 		if (!response.ok) {
 			const detail = await response.text().catch(() => "unknown error");
