@@ -3,6 +3,9 @@ node_modules
 .pnp
 .pnp.js
 
+# claude MCP config
+.mcp.json
+
 # presentation
 presentation.md
 
