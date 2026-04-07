@@ -82,6 +82,13 @@ const app = new Elysia()
 			credentials: true,
 		}),
 	)
+	// #region agent log
+	.onRequest(({ request }) => {
+		console.log(
+			`[debug-813928] onRequest method=${request.method} url=${request.url}`,
+		);
+	})
+	// #endregion
 	.all("/api/auth/*", async (context) => {
 		const { request, status } = context;
 		if (["POST", "GET"].includes(request.method)) {
@@ -89,6 +96,8 @@ const app = new Elysia()
 		}
 		return status(405);
 	})
+	// well-known discovery endpoints for OAuth/OIDC (oauthProvider plugin)
+	.all("/.well-known/*", async ({ request }) => auth.handler(request))
 	// Module routes
 	.use(arcadeAuthRoutes)
 	.use(createSlackAuthRoutes())
@@ -100,7 +109,12 @@ const app = new Elysia()
 	.use(createLibraryRoutes(libraryService, prisma))
 	.use(createInteractiveSessionRoutes(scannerService, libraryService))
 	// Health check
-	.get("/", () => "OK");
+	.get("/", () => {
+		// #region agent log
+		console.log("[debug-813928] GET / handler fired → returning OK");
+		// #endregion
+		return "OK";
+	});
 
 export type App = typeof app;
 
