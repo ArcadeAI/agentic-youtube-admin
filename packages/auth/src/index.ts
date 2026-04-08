@@ -1,6 +1,10 @@
 import { createPrismaClient } from "@agentic-youtube-admin/db";
 import { env } from "@agentic-youtube-admin/env/server";
-import { oauthProvider } from "@better-auth/oauth-provider";
+import {
+	oauthProvider,
+	oauthProviderAuthServerMetadata,
+	oauthProviderOpenIdConfigMetadata,
+} from "@better-auth/oauth-provider";
 import { passkey } from "@better-auth/passkey";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
@@ -37,6 +41,7 @@ export function createAuth() {
 				accessTokenExpiresIn: 3600,
 				refreshTokenExpiresIn: 2592000,
 				allowDynamicClientRegistration: true,
+				silenceWarnings: { oauthAuthServerConfig: true },
 			}),
 			magicLink({
 				sendMagicLink: async ({ email, url }) => {
@@ -58,3 +63,10 @@ export function createAuth() {
 }
 
 export const auth = createAuth();
+
+// Exposes RFC 8414 / OIDC Discovery endpoints for the server to mount.
+// These are necessary because the auth basePath ("/api/auth") shifts the
+// standard well-known URLs away from the root.
+export const wellKnownAuthServerHandler = oauthProviderAuthServerMetadata(auth);
+export const wellKnownOpenIdConfigHandler =
+	oauthProviderOpenIdConfigMetadata(auth);

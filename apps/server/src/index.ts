@@ -1,4 +1,8 @@
-import { auth } from "@agentic-youtube-admin/auth";
+import {
+	auth,
+	wellKnownAuthServerHandler,
+	wellKnownOpenIdConfigHandler,
+} from "@agentic-youtube-admin/auth";
 import prisma from "@agentic-youtube-admin/db";
 import { env } from "@agentic-youtube-admin/env/server";
 import { cors } from "@elysiajs/cors";
@@ -73,6 +77,18 @@ const cronManager = new CronManager(
 	},
 );
 
+// #region agent log
+process.on("uncaughtException", (err) => {
+	console.error(
+		`[debug-813928] uncaughtException: ${err?.message}`,
+		err?.stack,
+	);
+});
+process.on("unhandledRejection", (reason) => {
+	console.error("[debug-813928] unhandledRejection:", reason);
+});
+// #endregion
+
 const app = new Elysia()
 	.use(
 		cors({
@@ -88,6 +104,25 @@ const app = new Elysia()
 			`[debug-813928] onRequest method=${request.method} url=${request.url}`,
 		);
 	})
+	.onAfterHandle(({ request, response }) => {
+		const status = response instanceof Response ? response.status : 200;
+		const size =
+			response instanceof Response
+				? (response.headers.get("content-length") ?? "?")
+				: String(
+						typeof response === "string"
+							? response.length
+							: JSON.stringify(response).length,
+					);
+		console.log(
+			`[debug-813928] onAfterHandle method=${request.method} url=${request.url} status=${status} size=${size}`,
+		);
+	})
+	.onError(({ request, error, code }) => {
+		console.error(
+			`[debug-813928] onError method=${request.method} url=${request.url} code=${code} error=${error?.message}`,
+		);
+	})
 	// #endregion
 	.all("/api/auth/*", async (context) => {
 		const { request, status } = context;
@@ -96,8 +131,14 @@ const app = new Elysia()
 		}
 		return status(405);
 	})
-	// well-known discovery endpoints for OAuth/OIDC (oauthProvider plugin)
-	.all("/.well-known/*", async ({ request }) => auth.handler(request))
+	// OAuth/OIDC discovery endpoints (RFC 8414 / OIDC Discovery)
+	// Required because basePath="/api/auth" shifts the well-known URLs
+	.get("/.well-known/oauth-authorization-server/api/auth", ({ request }) =>
+		wellKnownAuthServerHandler(request),
+	)
+	.get("/.well-known/openid-configuration", ({ request }) =>
+		wellKnownOpenIdConfigHandler(request),
+	)
 	// Module routes
 	.use(arcadeAuthRoutes)
 	.use(createSlackAuthRoutes())
