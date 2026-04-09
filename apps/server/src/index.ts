@@ -13,6 +13,7 @@ import { createInteractiveSessionRoutes } from "./modules/interactive-session";
 import {
 	createLibraryRoutes,
 	LibraryService,
+	SummaryService,
 	TranscriptionService,
 } from "./modules/library";
 import {
@@ -48,6 +49,7 @@ const scannerService = new ScannerService(
 	slackDeliveryService,
 );
 const libraryService = new LibraryService();
+const summaryService = env.OPENAI_API_KEY ? new SummaryService() : undefined;
 const transcriptionService = new TranscriptionService(
 	libraryService,
 	env.YT_PROXY_URL,
@@ -148,7 +150,13 @@ const app = new Elysia()
 	.use(createNotificationRoutes(notificationService))
 	.use(createScannerRoutes(scannerService))
 	.use(createLibraryRoutes(libraryService, prisma))
-	.use(createInteractiveSessionRoutes(scannerService, libraryService))
+	.use(
+		createInteractiveSessionRoutes(
+			scannerService,
+			libraryService,
+			summaryService,
+		),
+	)
 	// Health check
 	.get("/", () => {
 		// #region agent log

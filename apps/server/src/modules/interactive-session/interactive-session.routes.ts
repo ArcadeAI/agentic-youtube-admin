@@ -2,6 +2,7 @@ import prisma from "@agentic-youtube-admin/db";
 import { Elysia, t } from "elysia";
 import { authenticateInteractive } from "../../middleware/interactive-auth";
 import { type LibraryService, slugify } from "../library/library.service";
+import type { SummaryService } from "../library/summary.service";
 import { NotificationService } from "../notification/notification.service";
 import type {
 	DeliveryMethod,
@@ -95,6 +96,7 @@ async function resolveChannelId(
 export function createInteractiveSessionRoutes(
 	scannerService: ScannerService,
 	libraryService?: LibraryService,
+	summaryService?: SummaryService,
 ) {
 	return (
 		new Elysia({
@@ -782,16 +784,144 @@ export function createInteractiveSessionRoutes(
 			)
 			.get(
 				"/videos/:videoId/summary",
-				async ({ params }) => {
-					const video = await prisma.video.findFirst({
-						where: { videoId: params.videoId },
+				async ({ request, params }) => {
+					const auth = await authenticateInteractive(request);
+
+					const ownedVideo = await prisma.video.findFirst({
+						where: {
+							videoId: params.videoId,
+							channel: { userId: auth.userId },
+						},
+						select: {
+							title: true,
+							publishedAt: true,
+							transcribedAt: true,
+							summary: true,
+							summarizedAt: true,
+							channel: {
+								select: {
+									channelId: true,
+									customUrl: true,
+									channelTitle: true,
+								},
+							},
+						},
 					});
-					if (!video) return new Response("Not found", { status: 404 });
+
+					const trackedVideo = !ownedVideo
+						? await prisma.trackedVideo.findFirst({
+								where: {
+									videoId: params.videoId,
+									channel: { userId: auth.userId },
+								},
+								select: {
+									title: true,
+									publishedAt: true,
+									transcribedAt: true,
+									summary: true,
+									summarizedAt: true,
+									channel: {
+										select: {
+											channelId: true,
+											customUrl: true,
+											channelTitle: true,
+										},
+									},
+								},
+							})
+						: null;
+
+					const video = ownedVideo ?? trackedVideo;
+					if (!video) {
+						return new Response("Video not found", { status: 404 });
+					}
+
+					const channelHandle =
+						video.channel.customUrl ?? video.channel.channelTitle;
+
+					if (video.summary) {
+						return {
+							status: "available",
+							videoId: params.videoId,
+							title: video.title,
+							summary: video.summary,
+							summarizedAt: video.summarizedAt?.toISOString(),
+						};
+					}
+
+					if (!video.transcribedAt || !libraryService || !summaryService) {
+						return {
+							status: "not_available",
+							videoId: params.videoId,
+							title: video.title,
+							channel_id: video.channel.channelId,
+							reason: !summaryService
+								? "summary_service_unavailable"
+								: "no_transcript",
+							start_transcription_args: {
+								video_id: params.videoId,
+								channel_id_or_handle: channelHandle,
+							},
+						};
+					}
+
+					const channelSlug = slugify(channelHandle);
+					const filename = libraryService.getTranscriptionFilename(
+						params.videoId,
+						video.title,
+						video.publishedAt,
+					);
+					const transcript = await libraryService.readFileContent(
+						channelSlug,
+						filename,
+					);
+
+					if (!transcript) {
+						return {
+							status: "not_available",
+							videoId: params.videoId,
+							title: video.title,
+							channel_id: video.channel.channelId,
+							reason: "transcript_file_missing",
+							start_transcription_args: {
+								video_id: params.videoId,
+								channel_id_or_handle: channelHandle,
+							},
+						};
+					}
+
+					let summary: string;
+					try {
+						summary = await summaryService.generateSummary(transcript);
+					} catch (err) {
+						return new Response(
+							JSON.stringify({
+								error: "Summary generation failed",
+								detail: String(err),
+							}),
+							{ status: 502, headers: { "Content-Type": "application/json" } },
+						);
+					}
+
+					const now = new Date();
+					if (ownedVideo) {
+						await prisma.video.update({
+							where: { videoId: params.videoId },
+							data: { summary, summarizedAt: now },
+						});
+					} else {
+						await prisma.trackedVideo.update({
+							where: { videoId: params.videoId },
+							data: { summary, summarizedAt: now },
+						});
+					}
 
 					return {
+						status: "available",
 						videoId: params.videoId,
 						title: video.title,
-						summary: "Summary generation not yet implemented",
+						summary,
+						summarizedAt: now.toISOString(),
 					};
 				},
 				{

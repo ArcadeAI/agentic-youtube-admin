@@ -57,6 +57,8 @@ model TrackedVideo {
   liveBroadcastContent  String?
   contentType           String?
   transcribedAt         DateTime?
+  summary               String?   @db.Text
+  summarizedAt          DateTime?
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 
