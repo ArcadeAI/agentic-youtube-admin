@@ -802,14 +802,14 @@ export function createInteractiveSessionRoutes(
 			.get(
 				"/channels/:channelId/transcriptions",
 				async ({ request, params }) => {
-					await authenticateInteractive(request);
+					const auth = await authenticateInteractive(request);
 					if (!libraryService) {
 						return { transcriptions: [] };
 					}
 
 					const ytChannelId = params.channelId.startsWith("UC")
 						? params.channelId
-						: await resolveChannelId(params.channelId, "");
+						: await resolveChannelId(params.channelId, auth.userId);
 
 					const channel =
 						(await prisma.youTubeChannel.findFirst({
