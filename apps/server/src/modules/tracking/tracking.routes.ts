@@ -95,6 +95,21 @@ export const trackingRoutes = new Elysia({ prefix: "/api/tracking" })
 		},
 	)
 
+	.delete(
+		"/channels/:id/permanent",
+		async ({ params, query }) => {
+			return service.deleteChannel(query.userId, params.id);
+		},
+		{
+			params: t.Object({
+				id: t.String(),
+			}),
+			query: t.Object({
+				userId: t.String(),
+			}),
+		},
+	)
+
 	.post(
 		"/channels/:id/poll",
 		async ({ params, body }) => {

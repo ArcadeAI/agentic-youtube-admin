@@ -143,6 +143,26 @@ async def track_channel(
     requires_auth=YT_ADMIN_AUTH,
     requires_secrets=["ELYSIA_BASE_URL"],
 )
+async def delete_tracked_channel(
+    context: Context,
+    channel_id_or_handle: Annotated[str, "YouTube channel ID (UC...) or @handle of the channel to permanently delete"],
+) -> dict:
+    """Permanently delete a tracked channel and all its associated data.
+
+    Removes the tracked channel record along with all snapshots, engagement scores,
+    and video records from the database. If no other user is tracking the same
+    YouTube channel, also deletes the transcript files from disk.
+
+    This action is irreversible. Use untrack (via track_channel reactivation flow)
+    if you only want to pause tracking without losing data.
+    """
+    return await _request(context, "DELETE", f"/api/v1/interactive/tracking/{channel_id_or_handle}")
+
+
+@app.tool(
+    requires_auth=YT_ADMIN_AUTH,
+    requires_secrets=["ELYSIA_BASE_URL"],
+)
 async def start_backfill(
     context: Context,
     channel_id_or_handle: Annotated[str, "YouTube channel ID (UC...) or @handle of an owned channel to backfill"],

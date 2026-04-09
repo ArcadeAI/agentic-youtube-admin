@@ -52,6 +52,9 @@ function TrackingPage() {
 	// Poll state
 	const [pollingId, setPollingId] = useState<string | null>(null);
 
+	// Delete state
+	const [deletingId, setDeletingId] = useState<string | null>(null);
+
 	const fetchChannels = useCallback(async () => {
 		try {
 			const { data } = await api.api.tracking.channels.get({
@@ -124,6 +127,30 @@ function TrackingPage() {
 			await fetchChannels();
 		} catch {
 			toast.error("Failed to untrack channel");
+		}
+	};
+
+	const handleDelete = async (channel: TrackedChannel) => {
+		if (
+			!window.confirm(
+				`Permanently delete "${channel.channelTitle}"? This will remove all snapshots, videos, and transcripts. This cannot be undone.`,
+			)
+		) {
+			return;
+		}
+		setDeletingId(channel.id);
+		try {
+			await api.api.tracking
+				.channels({ id: channel.id })
+				.permanent.delete(null as never, {
+					query: { userId },
+				});
+			toast.success(`Deleted "${channel.channelTitle}"`);
+			await fetchChannels();
+		} catch {
+			toast.error("Failed to delete channel");
+		} finally {
+			setDeletingId(null);
 		}
 	};
 
@@ -231,6 +258,15 @@ function TrackingPage() {
 									onClick={() => handleUntrack(channel)}
 								>
 									Untrack
+								</Button>
+								<Button
+									variant="ghost"
+									size="xs"
+									className="text-destructive hover:text-destructive"
+									onClick={() => handleDelete(channel)}
+									disabled={deletingId === channel.id}
+								>
+									{deletingId === channel.id ? "Deleting..." : "Delete"}
 								</Button>
 							</CardFooter>
 						</Card>

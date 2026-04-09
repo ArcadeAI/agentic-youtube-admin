@@ -10,6 +10,7 @@ import type {
 } from "../notification/notification.types";
 import type { ScannerService } from "../scanner/scanner.service";
 import { SchedulerService } from "../scheduler/scheduler.service";
+import { TrackingService } from "../tracking/tracking.service";
 import {
 	decodePageToken,
 	paginateResults,
@@ -17,6 +18,7 @@ import {
 
 const notificationService = new NotificationService(prisma);
 const schedulerService = new SchedulerService(prisma);
+const trackingService = new TrackingService(prisma);
 
 const DEFAULT_PAGE_SIZE = 20;
 
@@ -291,6 +293,31 @@ export function createInteractiveSessionRoutes(
 					body: t.Object({
 						channel_id: t.String(),
 						notes: t.Optional(t.String()),
+					}),
+				},
+			)
+			.delete(
+				"/tracking/:channelIdOrHandle",
+				async ({ request, params }) => {
+					const auth = await authenticateInteractive(request);
+					const channelId = await resolveChannelId(
+						params.channelIdOrHandle,
+						auth.userId,
+					).catch(() => params.channelIdOrHandle);
+
+					const channel = await prisma.trackedChannel.findFirst({
+						where: { userId: auth.userId, channelId },
+						select: { id: true },
+					});
+					if (!channel) {
+						return new Response("Not found", { status: 404 });
+					}
+
+					return trackingService.deleteChannel(auth.userId, channel.id);
+				},
+				{
+					params: t.Object({
+						channelIdOrHandle: t.String(),
 					}),
 				},
 			)

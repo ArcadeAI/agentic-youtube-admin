@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { env } from "@agentic-youtube-admin/env/server";
 
@@ -26,6 +26,13 @@ function buildFileStem(
 	const dateStr = formatDate(publishedAt);
 	const titleSlug = slugify(title);
 	return `${dateStr}_${titleSlug}_${videoId}`;
+}
+
+export async function deleteChannelDirectory(
+	channelSlug: string,
+): Promise<void> {
+	const dir = join(getTranscriptRoot(), channelSlug);
+	await rm(dir, { recursive: true, force: true });
 }
 
 export class LibraryService {

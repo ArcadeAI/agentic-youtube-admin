@@ -11,7 +11,7 @@ import {
 } from "@agentic-youtube-admin/arcade/schemas/public-channel";
 import { scoreChannelResponseSchema } from "@agentic-youtube-admin/arcade/schemas/score-channel";
 import { Prisma, type PrismaClient } from "@agentic-youtube-admin/db";
-import { slugify } from "../library/library.service";
+import { deleteChannelDirectory, slugify } from "../library/library.service";
 
 export class TrackingService {
 	constructor(private readonly db: PrismaClient) {}
@@ -95,6 +95,48 @@ export class TrackingService {
 			where: { id: trackedChannelId, userId },
 			data: { isActive: false },
 		});
+	}
+
+	async deleteChannel(
+		userId: string,
+		trackedChannelId: string,
+	): Promise<{ deleted: boolean; transcriptsDeleted: boolean }> {
+		const channel = await this.db.trackedChannel.findUniqueOrThrow({
+			where: { id: trackedChannelId, userId },
+			select: {
+				channelId: true,
+				customUrl: true,
+				channelTitle: true,
+			},
+		});
+
+		const channelSlug = slugify(channel.customUrl ?? channel.channelTitle);
+
+		// Reassign videos owned by this TrackedChannel to another user's TrackedChannel
+		// for the same YouTube channel, to avoid cascade-deleting shared video rows.
+		const survivor = await this.db.trackedChannel.findFirst({
+			where: { channelId: channel.channelId, id: { not: trackedChannelId } },
+			select: { id: true },
+		});
+		if (survivor) {
+			await this.db.trackedVideo.updateMany({
+				where: { channelId: trackedChannelId },
+				data: { channelId: survivor.id },
+			});
+		}
+
+		await this.db.trackedChannel.delete({
+			where: { id: trackedChannelId, userId },
+		});
+
+		const remaining = await this.db.trackedChannel.count({
+			where: { channelId: channel.channelId },
+		});
+		if (remaining === 0) {
+			await deleteChannelDirectory(channelSlug);
+		}
+
+		return { deleted: true, transcriptsDeleted: remaining === 0 };
 	}
 
 	// ── Polling ───────────────────────────────────────────────────────────
