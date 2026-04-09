@@ -894,6 +894,97 @@ export function createInteractiveSessionRoutes(
 				},
 			)
 			.get(
+				"/channels/:channelId/search",
+				async ({ request, params, query }) => {
+					const auth = await authenticateInteractive(request);
+					if (!libraryService) {
+						return { results: [] };
+					}
+
+					let ytChannelId: string;
+					try {
+						ytChannelId = await resolveChannelId(params.channelId, auth.userId);
+					} catch {
+						return new Response("Channel not found", { status: 404 });
+					}
+
+					const channel =
+						(await prisma.youTubeChannel.findFirst({
+							where: { channelId: ytChannelId },
+							select: { customUrl: true, channelTitle: true },
+						})) ??
+						(await prisma.trackedChannel.findFirst({
+							where: { channelId: ytChannelId },
+							select: { customUrl: true, channelTitle: true },
+						}));
+
+					if (!channel) {
+						return new Response("Channel not found", { status: 404 });
+					}
+
+					const channelSlug = slugify(
+						channel.customUrl ?? channel.channelTitle,
+					);
+					const searchResults = await libraryService.searchTranscripts(
+						channelSlug,
+						query.q,
+					);
+
+					if (searchResults.length === 0) {
+						return { results: [] };
+					}
+
+					const videoIds = searchResults.map((r) => r.videoId);
+					const [ownedVideos, trackedVideos] = await Promise.all([
+						prisma.video.findMany({
+							where: {
+								videoId: { in: videoIds },
+								channel: { channelId: ytChannelId },
+							},
+							select: { videoId: true, title: true, publishedAt: true },
+						}),
+						prisma.trackedVideo.findMany({
+							where: {
+								videoId: { in: videoIds },
+								channel: { channelId: ytChannelId },
+							},
+							select: { videoId: true, title: true, publishedAt: true },
+						}),
+					]);
+
+					const videoMap = new Map<
+						string,
+						{ title: string; publishedAt: Date }
+					>();
+					for (const v of [...ownedVideos, ...trackedVideos]) {
+						videoMap.set(v.videoId, {
+							title: v.title,
+							publishedAt: v.publishedAt,
+						});
+					}
+
+					return {
+						results: searchResults.map((r) => {
+							const meta = videoMap.get(r.videoId);
+							return {
+								videoId: r.videoId,
+								title: meta?.title ?? r.videoId,
+								publishedAt:
+									meta?.publishedAt?.toISOString().slice(0, 10) ?? null,
+								snippet: r.snippet,
+							};
+						}),
+					};
+				},
+				{
+					params: t.Object({ channelId: t.String() }),
+					query: t.Object({
+						q: t.String(),
+						page_token: t.Optional(t.String()),
+					}),
+				},
+			)
+			.get(
 				"/videos/:videoId/transcript",
 				async ({ request, params }) => {
 					const auth = await authenticateInteractive(request);

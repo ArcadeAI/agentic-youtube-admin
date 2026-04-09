@@ -118,10 +118,34 @@ export class LibraryService {
 	}
 
 	async searchTranscripts(
-		_channelSlug: string,
-		_query: string,
+		channelSlug: string,
+		query: string,
 	): Promise<Array<{ videoId: string; snippet: string; url: string }>> {
-		// TODO: Integrate with arcade-library for full-text search
-		return [];
+		const files = await this.listTranscriptions(channelSlug);
+		const lowerQuery = query.toLowerCase();
+		const results: Array<{ videoId: string; snippet: string; url: string }> =
+			[];
+
+		for (const filename of files) {
+			const content = await this.readFileContent(channelSlug, filename);
+			if (!content) continue;
+
+			const idx = content.toLowerCase().indexOf(lowerQuery);
+			if (idx === -1) continue;
+
+			const start = Math.max(0, idx - 100);
+			const end = Math.min(content.length, idx + 100);
+			const snippet = content.slice(start, end).trim();
+
+			// filename: {YYYYMMDD}_{titleSlug}_{videoId}-transcript.txt
+			const videoId =
+				filename
+					.replace(/-transcript\.txt$/, "")
+					.split("_")
+					.pop() ?? "";
+			if (videoId) results.push({ videoId, snippet, url: "" });
+		}
+
+		return results;
 	}
 }
