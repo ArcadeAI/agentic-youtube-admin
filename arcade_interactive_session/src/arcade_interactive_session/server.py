@@ -16,7 +16,7 @@ import httpx
 from arcade_mcp_server import Context, MCPApp
 from arcade_mcp_server.auth import OAuth2
 
-app = MCPApp(name="arcade_interactive_session", version="1.9.0", log_level="DEBUG")
+app = MCPApp(name="arcade_interactive_session", version="1.10.0", log_level="DEBUG")
 
 # The provider_id must match the OAuth2 provider configured in the user's Arcade account
 YT_ADMIN_AUTH = OAuth2(
@@ -264,11 +264,30 @@ async def get_transcriptions(
 ) -> dict:
     """List available transcriptions for a channel.
 
-    Returns a list of transcription files with URLs. Each URL points to
-    a markdown file containing the full transcription text. Use your
-    fetch tool to download the content of individual transcriptions.
+    Returns video metadata (videoId, title, publishedAt) for each
+    transcribed video. Use get_video_transcript with a videoId to
+    read the full transcript text.
     """
     return await _request(context, "GET", f"/api/v1/interactive/channels/{channel_id_or_handle}/transcriptions")
+
+
+@app.tool(
+    requires_auth=YT_ADMIN_AUTH,
+    requires_secrets=["ELYSIA_BASE_URL"],
+)
+async def get_video_transcript(
+    context: Context,
+    video_id: Annotated[str, "YouTube video ID"],
+) -> dict:
+    """Get the full transcript text for a specific video.
+
+    If the transcript is already available, returns the full text directly
+    in the 'transcript' field (status='available').
+
+    If not yet transcribed, returns status='not_available' along with the
+    exact arguments to pass to start_transcription to generate it.
+    """
+    return await _request(context, "GET", f"/api/v1/interactive/videos/{video_id}/transcript")
 
 
 # ── Notification Tools ───────────────────────────────────────────────────────

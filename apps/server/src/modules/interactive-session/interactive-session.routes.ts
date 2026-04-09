@@ -811,7 +811,6 @@ export function createInteractiveSessionRoutes(
 						? params.channelId
 						: await resolveChannelId(params.channelId, "");
 
-					// Look up the channel to derive the channel slug for the filesystem path
 					const channel =
 						(await prisma.youTubeChannel.findFirst({
 							where: { channelId: ytChannelId },
@@ -830,24 +829,171 @@ export function createInteractiveSessionRoutes(
 						channel.customUrl ?? channel.channelTitle,
 					);
 					const files = await libraryService.listTranscriptions(channelSlug);
-					const baseUrl = "/api/library";
-					return {
-						transcriptions: files.map((filename) => {
-							// Extract videoId from: {YYYYMMDD}_{titleSlug}_{videoId}-transcript.txt
-							const videoId =
-								filename
+
+					// Extract videoIds from filenames: {YYYYMMDD}_{titleSlug}_{videoId}-transcript.txt
+					const videoIds = files
+						.map(
+							(f) =>
+								f
 									.replace(/-transcript\.txt$/, "")
 									.split("_")
-									.pop() ?? "";
+									.pop() ?? "",
+						)
+						.filter(Boolean);
+
+					const [ownedVideos, trackedVideos] = await Promise.all([
+						prisma.video.findMany({
+							where: {
+								videoId: { in: videoIds },
+								channel: { channelId: ytChannelId },
+							},
+							select: {
+								videoId: true,
+								title: true,
+								publishedAt: true,
+							},
+						}),
+						prisma.trackedVideo.findMany({
+							where: {
+								videoId: { in: videoIds },
+								channel: { channelId: ytChannelId },
+							},
+							select: {
+								videoId: true,
+								title: true,
+								publishedAt: true,
+							},
+						}),
+					]);
+
+					const videoMap = new Map<
+						string,
+						{ title: string; publishedAt: Date }
+					>();
+					for (const v of [...ownedVideos, ...trackedVideos]) {
+						videoMap.set(v.videoId, {
+							title: v.title,
+							publishedAt: v.publishedAt,
+						});
+					}
+
+					return {
+						transcriptions: videoIds.map((videoId) => {
+							const meta = videoMap.get(videoId);
 							return {
-								filename,
-								url: `${baseUrl}/channels/${ytChannelId}/videos/${videoId}/transcript`,
+								videoId,
+								title: meta?.title ?? videoId,
+								publishedAt:
+									meta?.publishedAt?.toISOString().slice(0, 10) ?? null,
 							};
 						}),
 					};
 				},
 				{
 					params: t.Object({ channelId: t.String() }),
+				},
+			)
+			.get(
+				"/videos/:videoId/transcript",
+				async ({ request, params }) => {
+					const auth = await authenticateInteractive(request);
+
+					const ownedVideo = await prisma.video.findFirst({
+						where: {
+							videoId: params.videoId,
+							channel: { userId: auth.userId },
+						},
+						select: {
+							title: true,
+							publishedAt: true,
+							transcribedAt: true,
+							channel: {
+								select: {
+									channelId: true,
+									customUrl: true,
+									channelTitle: true,
+								},
+							},
+						},
+					});
+
+					const trackedVideo = !ownedVideo
+						? await prisma.trackedVideo.findFirst({
+								where: {
+									videoId: params.videoId,
+									channel: { userId: auth.userId },
+								},
+								select: {
+									title: true,
+									publishedAt: true,
+									transcribedAt: true,
+									channel: {
+										select: {
+											channelId: true,
+											customUrl: true,
+											channelTitle: true,
+										},
+									},
+								},
+							})
+						: null;
+
+					const video = ownedVideo ?? trackedVideo;
+					if (!video) {
+						return new Response("Video not found", { status: 404 });
+					}
+
+					const channelHandle =
+						video.channel.customUrl ?? video.channel.channelTitle;
+
+					if (!video.transcribedAt || !libraryService) {
+						return {
+							status: "not_available",
+							videoId: params.videoId,
+							title: video.title,
+							channel_id: video.channel.channelId,
+							start_transcription_args: {
+								video_id: params.videoId,
+								channel_id_or_handle: channelHandle,
+							},
+						};
+					}
+
+					const channelSlug = slugify(channelHandle);
+					const filename = libraryService.getTranscriptionFilename(
+						params.videoId,
+						video.title,
+						video.publishedAt,
+					);
+					const content = await libraryService.readFileContent(
+						channelSlug,
+						filename,
+					);
+
+					if (!content) {
+						return {
+							status: "not_available",
+							videoId: params.videoId,
+							title: video.title,
+							channel_id: video.channel.channelId,
+							message:
+								"Transcript record exists but the file could not be read",
+							start_transcription_args: {
+								video_id: params.videoId,
+								channel_id_or_handle: channelHandle,
+							},
+						};
+					}
+
+					return {
+						status: "available",
+						videoId: params.videoId,
+						title: video.title,
+						transcript: content,
+					};
+				},
+				{
+					params: t.Object({ videoId: t.String() }),
 				},
 			)
 	);
