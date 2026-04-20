@@ -11,6 +11,15 @@ import {
 } from "../notification/slack-message.formatter";
 import type { SchedulerService } from "../scheduler/scheduler.service";
 
+function formatWorkflowError(error: unknown): string {
+	if (typeof error === "string") return error;
+	if (error instanceof Error) return error.message;
+	if (error && typeof error === "object" && "message" in error) {
+		return String((error as { message: unknown }).message);
+	}
+	return JSON.stringify(error);
+}
+
 /** In-memory map of scan-run ID → Mastra Run for cancellation support. */
 const activeRuns = new Map<
 	string,
@@ -154,7 +163,7 @@ export class ScannerService {
 			return result.result;
 		}
 		throw new Error(
-			`Backfill workflow failed: ${result.status === "failed" ? result.error : result.status}`,
+			`Backfill workflow failed: ${result.status === "failed" ? formatWorkflowError(result.error) : result.status}`,
 		);
 	}
 
@@ -175,7 +184,7 @@ export class ScannerService {
 			return result.result;
 		}
 		throw new Error(
-			`Daily sync workflow failed: ${result.status === "failed" ? result.error : result.status}`,
+			`Daily sync workflow failed: ${result.status === "failed" ? formatWorkflowError(result.error) : result.status}`,
 		);
 	}
 
@@ -192,7 +201,7 @@ export class ScannerService {
 			return result.result;
 		}
 		throw new Error(
-			`Tracked poll workflow failed: ${result.status === "failed" ? result.error : result.status}`,
+			`Tracked poll workflow failed: ${result.status === "failed" ? formatWorkflowError(result.error) : result.status}`,
 		);
 	}
 
@@ -235,7 +244,7 @@ export class ScannerService {
 			return result.result;
 		}
 		throw new Error(
-			`Transcription workflow failed: ${result.status === "failed" ? result.error : result.status}`,
+			`Transcription workflow failed: ${result.status === "failed" ? formatWorkflowError(result.error) : result.status}`,
 		);
 	}
 
@@ -321,7 +330,7 @@ export class ScannerService {
 				const status = result.status === "success" ? "success" : "error";
 				const error =
 					result.status !== "success"
-						? `Workflow ${result.status}: ${"error" in result ? result.error : "unknown"}`
+						? `Workflow ${result.status}: ${"error" in result ? formatWorkflowError(result.error) : "unknown"}`
 						: undefined;
 				await this.schedulerService.completeScanRun(
 					scanRun.id,
@@ -410,7 +419,7 @@ export class ScannerService {
 				const status = result.status === "success" ? "success" : "error";
 				const error =
 					result.status !== "success"
-						? `Workflow ${result.status}: ${"error" in result ? result.error : "unknown"}`
+						? `Workflow ${result.status}: ${"error" in result ? formatWorkflowError(result.error) : "unknown"}`
 						: undefined;
 				await this.schedulerService.completeScanRun(
 					scanRun.id,
