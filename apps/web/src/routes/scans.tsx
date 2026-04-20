@@ -244,10 +244,16 @@ function ScansPage() {
 		}
 		setRunning(true);
 		try {
+			let result: {
+				data: unknown;
+				error: { value?: unknown; message?: string } | null;
+			};
 			switch (scanType) {
 				case "owned_backfill":
-					await (
-						api.api.scanner.backfill.post as (body: unknown) => Promise<unknown>
+					result = await (
+						api.api.scanner.backfill.post as (
+							body: unknown,
+						) => Promise<typeof result>
 					)({
 						userId,
 						channelId: selectedChannel,
@@ -256,38 +262,52 @@ function ScansPage() {
 					});
 					break;
 				case "owned_daily_sync":
-					await (
+					result = await (
 						api.api.scanner["daily-sync"].post as (
 							body: unknown,
-						) => Promise<unknown>
+						) => Promise<typeof result>
 					)({
 						userId,
 						channelId: selectedChannel,
 					});
 					break;
 				case "tracked_daily_poll":
-					await (
+					result = await (
 						api.api.scanner["daily-poll"].post as (
 							body: unknown,
-						) => Promise<unknown>
+						) => Promise<typeof result>
 					)({ userId });
 					break;
 				case "transcription": {
-					const { data: txResult } = (await (
+					result = await (
 						api.api.scanner.transcribe.post as (
 							body: unknown,
-						) => Promise<{ data: unknown }>
+						) => Promise<typeof result>
 					)({
 						userId,
 						...(selectedChannel ? { channelId: selectedChannel } : {}),
 						...(selectedVideoId ? { videoId: selectedVideoId } : {}),
 						...(limit ? { limit: Number(limit) } : {}),
-					})) as { data: TranscriptionResult };
-					setLastResult(txResult);
+					});
+					if (result.data) {
+						setLastResult(result.data as TranscriptionResult);
+					}
 					break;
 				}
+				default:
+					toast.error(`Unknown scan type: ${scanType}`);
+					return;
 			}
-			toast.success(`${scanTypeLabel(scanType)} completed`);
+
+			if (result.error) {
+				const msg =
+					result.error.message ??
+					result.error.value ??
+					JSON.stringify(result.error);
+				toast.error(`${scanTypeLabel(scanType)} failed: ${msg}`);
+			} else {
+				toast.success(`${scanTypeLabel(scanType)} completed`);
+			}
 		} catch (err) {
 			const message =
 				err instanceof Error

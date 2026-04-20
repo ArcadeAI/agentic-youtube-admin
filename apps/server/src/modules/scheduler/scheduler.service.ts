@@ -76,6 +76,13 @@ export class SchedulerService {
 		});
 	}
 
+	async pauseSchedule(scheduleId: string) {
+		return this.prisma.scanSchedule.update({
+			where: { id: scheduleId },
+			data: { isActive: false },
+		});
+	}
+
 	async createScanRun(
 		scanType: string,
 		opts: { scheduleId?: string; userId?: string } = {},

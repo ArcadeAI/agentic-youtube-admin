@@ -87,12 +87,23 @@ export function formatScanError(
 ): string {
 	const channel = channelTitle ? `\nChannel: ${channelTitle}` : "";
 	const typeLabel = scanType.replace(/_/g, " ");
-	return [
+	const isAuthError = errorMessage.includes("authorization has expired");
+
+	const lines = [
 		`*Scan Failed: ${typeLabel}*`,
 		channel,
 		`Error: ${errorMessage}`,
-		`Failed at ${timestamp()} UTC`,
-	]
-		.filter(Boolean)
-		.join("\n");
+	];
+
+	if (isAuthError) {
+		lines.push(
+			"",
+			":warning: *This schedule has been paused* to avoid repeated failures.",
+			"After re-authorizing, re-enable the schedule from the Scans page.",
+		);
+	}
+
+	lines.push(`Failed at ${timestamp()} UTC`);
+
+	return lines.filter(Boolean).join("\n");
 }

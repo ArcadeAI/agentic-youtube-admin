@@ -1,3 +1,4 @@
+import { AuthRequiredError } from "@agentic-youtube-admin/arcade";
 import type { PrismaClient } from "@agentic-youtube-admin/db";
 import type { Mastra } from "@mastra/core";
 import type { NotificationService } from "../notification/notification.service";
@@ -120,7 +121,17 @@ export class ScannerService {
 				);
 			}
 		} catch (err) {
-			const errorMsg = err instanceof Error ? err.message : String(err);
+			const isAuthError =
+				err instanceof AuthRequiredError ||
+				(err instanceof Error &&
+					err.message.includes("User authorization required"));
+
+			const errorMsg = isAuthError
+				? "YouTube authorization has expired. Please re-authorize your YouTube account in Arcade to resume scheduled scans."
+				: err instanceof Error
+					? err.message
+					: String(err);
+
 			await this.schedulerService.completeScanRun(
 				scanRun.id,
 				"error",
@@ -132,6 +143,14 @@ export class ScannerService {
 				"error",
 				errorMsg,
 			);
+
+			if (isAuthError) {
+				await this.schedulerService.pauseSchedule(scheduleId);
+				console.warn(
+					`Schedule ${scheduleId} paused: YouTube auth expired for user ${userId}`,
+				);
+			}
+
 			await this.notifyScanComplete(
 				userId,
 				scanType,
