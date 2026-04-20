@@ -288,8 +288,14 @@ function ScansPage() {
 				}
 			}
 			toast.success(`${scanTypeLabel(scanType)} completed`);
-		} catch {
-			toast.error(`${scanTypeLabel(scanType)} failed`);
+		} catch (err) {
+			const message =
+				err instanceof Error
+					? err.message
+					: typeof err === "object" && err !== null && "message" in err
+						? String((err as { message: unknown }).message)
+						: String(err);
+			toast.error(`${scanTypeLabel(scanType)} failed: ${message}`);
 		} finally {
 			setRunning(false);
 		}
