@@ -6,18 +6,21 @@ Combines two auth mechanisms in a single server:
 - API key (requires_secrets): For public channel data (YouTube Data API v3)
 """
 
+import asyncio
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Optional
 
+import httpx
 import isodate
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from arcade_mcp_server import Context, MCPApp
 from arcade_mcp_server.auth import Google
 
-app = MCPApp(name="youtube_tools", version="1.1.0", log_level="DEBUG")
+app = MCPApp(name="youtube_tools", version="1.2.0", log_level="DEBUG")
 
 # YouTube OAuth2 configuration (owned channel tools)
 YOUTUBE_SCOPES = [
@@ -73,41 +76,129 @@ def _parse_duration_to_seconds(duration_str: str) -> int:
         return 0
 
 
-def _classify_content_type(video: dict) -> tuple[str, int | None, int | None, float | None]:
-    """Classify content type using YouTube's official criteria (owner-only, uses fileDetails).
+# Authoritative Shorts detection via YouTube's URL behavior.
+#
+# YouTube serves https://www.youtube.com/shorts/<id> directly (HTTP 200) only when
+# <id> is an actual Short. A regular video instead issues a redirect (3xx) to
+# /watch?v=<id>. This is the source of truth: it does not rely on duration or
+# aspect-ratio heuristics and works without any API access (no OAuth, no API key).
+_SHORTS_PROBE_URL = "https://www.youtube.com/shorts/{video_id}"
+_SHORTS_PROBE_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    )
+}
+# Conclusive verdicts are cached for the process lifetime (a video's type never changes).
+_shorts_url_cache: dict[str, bool] = {}
 
-    Returns: (contentType, width, height, aspectRatio)
+
+def _probe_is_short(video_id: str, client: httpx.Client) -> bool | None:
+    """Authoritatively determine whether a video is a Short via its /shorts/ URL.
+
+    Returns:
+        True  — the video is a Short (HTTP 200).
+        False — the video is a regular video (redirect to /watch).
+        None  — inconclusive (deleted/private video, consent/login redirect, network
+                error, rate limiting); callers should fall back to the heuristic.
+    """
+    if not video_id:
+        return None
+    if video_id in _shorts_url_cache:
+        return _shorts_url_cache[video_id]
+
+    try:
+        resp = client.head(
+            _SHORTS_PROBE_URL.format(video_id=video_id),
+            headers=_SHORTS_PROBE_HEADERS,
+            follow_redirects=False,
+            timeout=5.0,
+        )
+    except httpx.HTTPError:
+        return None
+
+    result: bool | None = None
+    if resp.status_code == 200:
+        result = True
+    elif resp.is_redirect and "/watch" in resp.headers.get("location", ""):
+        # Only a redirect to the standard watch page proves it is not a Short.
+        # Other redirects (e.g. consent/login interstitials) are inconclusive.
+        result = False
+
+    if result is not None:
+        _shorts_url_cache[video_id] = result
+    return result
+
+
+def _probe_shorts_batch(video_ids: list[str], max_workers: int = 16) -> dict[str, bool]:
+    """Probe many video IDs concurrently for Short-ness.
+
+    Returns a mapping of video_id -> is_short containing only conclusive results;
+    inconclusive IDs are omitted so callers fall back to the heuristic classifier.
+    """
+    ids = [vid for vid in dict.fromkeys(video_ids) if vid]  # de-dupe, preserve order
+    if not ids:
+        return {}
+
+    results: dict[str, bool] = {}
+    with httpx.Client() as client:
+        with ThreadPoolExecutor(max_workers=min(max_workers, len(ids))) as executor:
+            futures = {executor.submit(_probe_is_short, vid, client): vid for vid in ids}
+            for future in as_completed(futures):
+                verdict = future.result()
+                if verdict is not None:
+                    results[futures[future]] = verdict
+    return results
+
+
+def _classify_content_type(
+    video: dict, is_short: bool | None = None
+) -> tuple[str, int | None, int | None, float | None]:
+    """Classify content type (SHORTS/NORMAL/LIVE) and return video dimensions.
+
+    `is_short` is the authoritative verdict from the /shorts/ URL probe
+    (see _probe_is_short). When provided (not None) it decides SHORTS vs NORMAL.
+    When None — i.e. the URL probe was inconclusive or unavailable — this falls back
+    to the legacy duration + aspect-ratio heuristic, which requires owner-only
+    fileDetails. Returns: (contentType, width, height, aspectRatio).
     """
     snippet = video.get("snippet", {})
     content_details = video.get("contentDetails", {})
     file_details = video.get("fileDetails", {})
 
+    # LIVE takes precedence — the URL probe cannot identify live broadcasts.
     if snippet.get("liveBroadcastContent") == "live":
         return ("LIVE", None, None, None)
 
-    duration_seconds = _parse_duration_to_seconds(content_details.get("duration", "PT0S"))
-
-    if duration_seconds > 0 and duration_seconds <= 180:
-        video_streams = file_details.get("videoStreams", [])
-        if video_streams:
-            stream = video_streams[0]
-            width = stream.get("widthPixels", 0)
-            height = stream.get("heightPixels", 0)
-            if width > 0 and height > 0:
-                aspect_ratio = height / width
-                if height > width and aspect_ratio >= 1.6 and aspect_ratio <= 1.9:
-                    return ("SHORTS", width, height, aspect_ratio)
-
+    # Video dimensions (independent of classification) — surfaced as metadata.
+    width = height = aspect_ratio = None
     video_streams = file_details.get("videoStreams", [])
     if video_streams:
         stream = video_streams[0]
-        width = stream.get("widthPixels", 0)
-        height = stream.get("heightPixels", 0)
-        if width > 0 and height > 0:
-            aspect_ratio = height / width
-            return ("NORMAL", width, height, aspect_ratio)
+        w = stream.get("widthPixels", 0)
+        h = stream.get("heightPixels", 0)
+        if w > 0 and h > 0:
+            width, height, aspect_ratio = w, h, h / w
 
-    return ("NORMAL", None, None, None)
+    # Authoritative: YouTube /shorts/ URL behavior.
+    if is_short is True:
+        return ("SHORTS", width, height, aspect_ratio)
+    if is_short is False:
+        return ("NORMAL", width, height, aspect_ratio)
+
+    # Fallback heuristic (URL probe inconclusive): duration <= 180s + vertical aspect.
+    duration_seconds = _parse_duration_to_seconds(content_details.get("duration", "PT0S"))
+    if (
+        0 < duration_seconds <= 180
+        and width is not None
+        and height is not None
+        and aspect_ratio is not None
+        and height > width
+        and 1.6 <= aspect_ratio <= 1.9
+    ):
+        return ("SHORTS", width, height, aspect_ratio)
+
+    return ("NORMAL", width, height, aspect_ratio)
 
 
 def _split_date_range(start_date: str, end_date: str, chunk_days: int = 180) -> list[tuple[str, str]]:
@@ -236,6 +327,13 @@ def _fetch_videos_with_stats(
             video["views"] = stats.get("views", 0)
             video["likes"] = stats.get("likes", 0)
             video["comments"] = stats.get("comments", 0)
+
+        # Authoritative Short detection via the /shorts/ URL (works without owner
+        # access, so public videos can be classified even though fileDetails is
+        # unavailable). is_short is None when the probe was inconclusive.
+        shorts_map = _probe_shorts_batch([v["video_id"] for v in videos])
+        for video in videos:
+            video["is_short"] = shorts_map.get(video["video_id"])
 
     result: dict = {"videos": videos}
     if page_token:
@@ -393,12 +491,18 @@ async def list_channel_videos(
         )
         videos_response = videos_request.execute()
 
+        shorts_map = await asyncio.to_thread(
+            _probe_shorts_batch, [v.get("id") for v in videos_response.get("items", [])]
+        )
+
         videos = []
         for video in videos_response.get("items", []):
             snippet = video.get("snippet", {})
             content_details = video.get("contentDetails", {})
             statistics = video.get("statistics", {})
-            content_type, width, height, aspect_ratio = _classify_content_type(video)
+            content_type, width, height, aspect_ratio = _classify_content_type(
+                video, shorts_map.get(video.get("id"))
+            )
 
             videos.append({
                 "videoId": video.get("id"),
@@ -507,10 +611,12 @@ async def get_content_type_classification(
     context: Context,
     video_ids: Annotated[list[str], "List of YouTube video IDs to classify (up to 50 per request)"],
 ) -> dict[str, dict]:
-    """Classify content type (SHORTS, NORMAL, LIVE) for multiple videos using Data API.
+    """Classify content type (SHORTS, NORMAL, LIVE) for multiple videos.
 
-    Uses fileDetails (video dimensions) and duration to achieve 99% accurate classification.
-    Note: fileDetails is only accessible to video owners.
+    Short detection is authoritative: each video is probed via its
+    https://www.youtube.com/shorts/<id> URL (a Short serves 200; a regular video
+    redirects to /watch). Falls back to a duration + aspect-ratio heuristic (using
+    owner-only fileDetails) only when the URL probe is inconclusive.
     """
     try:
         oauth_token = context.get_auth_token_or_empty()
@@ -525,10 +631,14 @@ async def get_content_type_classification(
         )
         response = request.execute()
 
+        shorts_map = await asyncio.to_thread(_probe_shorts_batch, video_ids)
+
         content_types = {}
         for video in response.get("items", []):
             video_id = video.get("id")
-            content_type, width, height, aspect_ratio = _classify_content_type(video)
+            content_type, width, height, aspect_ratio = _classify_content_type(
+                video, shorts_map.get(video_id)
+            )
             content_types[video_id] = {
                 "contentType": content_type,
                 "width": width,
@@ -1037,6 +1147,8 @@ async def discover_all_videos(
             if not page_token:
                 break
 
+        shorts_map = await asyncio.to_thread(_probe_shorts_batch, all_video_ids)
+
         all_videos = []
         for i in range(0, len(all_video_ids), 50):
             batch = all_video_ids[i : i + 50]
@@ -1051,7 +1163,9 @@ async def discover_all_videos(
                 snippet = video.get("snippet", {})
                 content_details = video.get("contentDetails", {})
                 statistics = video.get("statistics", {})
-                content_type, width, height, aspect_ratio = _classify_content_type(video)
+                content_type, width, height, aspect_ratio = _classify_content_type(
+                    video, shorts_map.get(video.get("id"))
+                )
 
                 all_videos.append({
                     "videoId": video.get("id"),
@@ -1420,8 +1534,11 @@ def list_public_channel_videos(
 ) -> dict:
     """List videos uploaded by any public YouTube channel.
 
-    Returns a dict with "videos" (list of video objects including stats) and
-    "next_page_token" (str) if more results are available.
+    Returns a dict with "videos" (list of video objects including stats and an
+    "is_short" flag) and "next_page_token" (str) if more results are available.
+    Each video's "is_short" is True for a Short, False for a regular video, or null
+    when detection was inconclusive — determined authoritatively from YouTube's
+    /shorts/ URL redirect behavior.
     """
     api_key = context.get_secret("YOUTUBE_API_KEY")
     youtube = _build_youtube_service_with_key(api_key)
